@@ -13,6 +13,9 @@ conn = mysql.connector.connect(
     database=st.secrets["mysql"]["database"],
     )
 
+st.write("▶▶▶ 目前查的表是 orders_new")  
+st.code(sql)
+
 name = st.text_input("姓名")
 if st.button("查詢"):
     sql = """
