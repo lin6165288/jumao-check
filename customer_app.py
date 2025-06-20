@@ -3,15 +3,14 @@ import pandas as pd
 import mysql.connector
 from mysql.connector import Error
 
-# 用 cache_resource 快取連線，Query 每次都重跑
-@st.cache_resource
+db_cfg = st.secrets["mysql"]
+
 def get_connection():
-    cfg = st.secrets["mysql"]
     return mysql.connector.connect(
-        host=cfg["host"],
-        user=cfg["user"],
-        password=cfg["password"],
-        database=cfg["database"],
+        host=db_cfg["host"],
+        user=db_cfg["user"],
+        password=db_cfg["password"],
+        database=db_cfg["database"],
     )
 
 st.set_page_config(page_title="客戶訂單查詢")
