@@ -39,7 +39,7 @@ if st.button("🔎 查詢"):
                   amount_rmb      AS 金額,
                   is_arrived      AS 是否到貨,
                   is_returned     AS 是否運回
-                FROM orders_new
+                FROM orders
                 WHERE customer_name LIKE %s
                 ORDER BY order_time DESC
             """
