@@ -1,5 +1,0 @@
-streamlit
-pandas
-mysql-connector-python
-openpyxl
-st-aggrid
