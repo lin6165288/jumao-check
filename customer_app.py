@@ -3,13 +3,16 @@ import pandas as pd
 import mysql.connector
 from mysql.connector import Error
 
-# ====== 資料庫連線設定 ======
-DB_CONFIG = {
-    "host": "mysql-jumao.alwaysdata.net",
-    "user": "jumao",
-    "password": "Ff1648955",  # ← 把 YOUR_PASSWORD_HERE 換成你的密碼
-    "database": "jumao_orders"
-}
+# 從 secrets.toml 或 Streamlit App Secrets 讀取
+db_cfg = st.secrets["mysql"]
+
+# 建立連線
+conn = mysql.connector.connect(
+    host=db_cfg["host"],
+    user=db_cfg["user"],
+    password=db_cfg["password"],
+    database=db_cfg["database"],
+)
 
 def get_connection():
     """建立並回傳一個新的 MySQL 連線"""
