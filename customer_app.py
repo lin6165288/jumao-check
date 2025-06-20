@@ -13,7 +13,7 @@ def get_connection():
         database=db_cfg["database"],
     )
 
-st.set_page_config(page_title="客戶訂單查詢")
+st.set_page_config(page_title="橘貓代購｜訂單查詢系統")
 st.title("🧡 橘貓代購｜訂單查詢系統")
 
 name = st.text_input("姓名")
