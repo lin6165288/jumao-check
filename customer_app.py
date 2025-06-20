@@ -3,28 +3,24 @@ import pandas as pd
 import mysql.connector
 from mysql.connector import Error
 
-db_cfg = st.secrets["mysql"]
-
+# 用 cache_resource 快取連線，Query 每次都重跑
 @st.cache_resource
 def get_connection():
-    """建立並快取一個 MySQL 連線資源"""
+    cfg = st.secrets["mysql"]
     return mysql.connector.connect(
-        host=db_cfg["host"],
-        user=db_cfg["user"],
-        password=db_cfg["password"],
-        database=db_cfg["database"],
+        host=cfg["host"],
+        user=cfg["user"],
+        password=cfg["password"],
+        database=cfg["database"],
     )
 
-st.set_page_config(page_title="🧡 橘貓代購｜客戶訂單查詢", layout="centered")
-st.title("🧡 橘貓代購｜客戶訂單查詢系統")
-st.write("請在下方輸入您的 **姓名**，即可查詢所有的訂單紀錄")
+st.set_page_config(page_title="客戶訂單查詢")
+st.title("🧡 橘貓代購｜訂單查詢系統")
 
-name = st.text_input("姓名", "")
-
+name = st.text_input("姓名")
 if st.button("🔎 查詢"):
-    name = name.strip()
-    if not name:
-        st.warning("⚠️ 請先輸入姓名")
+    if not name.strip():
+        st.warning("請先輸入姓名")
     else:
         try:
             conn = get_connection()
@@ -42,8 +38,8 @@ if st.button("🔎 查詢"):
             """
             df = pd.read_sql(sql, conn, params=[f"%{name}%"])
             if df.empty:
-                st.info("ℹ️ 查無任何訂單，請確認您的姓名是否正確。")
+                st.info("查無訂單，請確認姓名是否正確")
             else:
                 st.dataframe(df, use_container_width=True)
         except Error as e:
-            st.error(f"❌ 查詢過程發生錯誤：{e}")
+            st.error(f"資料庫錯誤：{e}")
