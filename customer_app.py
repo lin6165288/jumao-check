@@ -33,17 +33,19 @@ if st.button("🔎 查詢"):
                   is_returned     AS 是否運回
                 FROM orders
                 WHERE customer_name LIKE %s
+                  AND is_returned = 0         -- 只選擇「未運回」的訂單
                 ORDER BY order_time DESC
             """
             df = pd.read_sql(sql, conn, params=[f"%{name}%"])
-            if df.empty:
-                st.info("查無訂單，請確認姓名是否正確")
-            else:
-                # 執行完查詢、得到 df 之後，貼在這裡
-                # 將 1/0 轉成 ✔️/❌
-                df["是否到貨"]   = df["是否到貨"].apply(lambda x: "✔️" if x else "❌")
-                df["是否運回"]   = df["是否運回"].apply(lambda x: "✔️" if x else "❌")
+            conn.close()
 
+            if df.empty:
+                st.info("查無符合條件的訂單，若您已取貨請聯絡客服。")
+            else:
+                # 轉成 ✔️/❌
+                df["是否到貨"] = df["是否到貨"].apply(lambda x: "✔️" if x else "❌")
+                df["是否運回"] = df["是否運回"].apply(lambda x: "✔️" if x else "❌")
                 st.dataframe(df, use_container_width=True)
+
         except Error as e:
             st.error(f"資料庫錯誤：{e}")
