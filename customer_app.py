@@ -25,10 +25,12 @@ if st.button("🔎 查詢"):
             conn = get_connection()
             sql = """
                 SELECT
+                　order_id        AS 訂單編號,
                   order_time      AS 下單日期,
                   platform        AS 平台,
                   tracking_number AS 單號,
                   amount_rmb      AS 金額,
+                  weight_kg       AS 包裹重量,
                   is_arrived      AS 是否到貨,
                   is_returned     AS 是否運回
                 FROM orders
