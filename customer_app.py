@@ -25,7 +25,6 @@ if st.button("🔎 查詢"):
             conn = get_connection()
             sql = """
                 SELECT
-                　order_id        AS 訂單編號,
                   order_time      AS 下單日期,
                   platform        AS 平台,
                   tracking_number AS 單號,
