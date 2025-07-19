@@ -1,9 +1,5 @@
 streamlit
 pandas
 mysql-connector-python
-
-streamlit
-mysql-connector-python
-pandas
 openpyxl
 st-aggrid
