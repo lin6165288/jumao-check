@@ -314,11 +314,14 @@ elif menu == "📦 可出貨名單":
         )
 
 # =====🚚 批次出貨=====
+# =====🚚 批次出貨=====
+
 elif menu == "🚚 批次出貨":
     st.subheader("🚚 批次出貨")
 
     name = st.text_input("🔍 請輸入客戶姓名")
     if name.strip():
+        # 查詢訂單
         df = pd.read_sql(
             "SELECT * FROM orders WHERE customer_name LIKE %s",
             conn,
@@ -328,6 +331,7 @@ elif menu == "🚚 批次出貨":
         if df.empty:
             st.warning("⚠️ 查無資料")
         else:
+            # 顯示用表格（中文欄位＋✔✘）
             df_display = df.copy()
             column_mapping = {
                 "order_id": "訂單編號",
@@ -349,6 +353,7 @@ elif menu == "🚚 批次出貨":
                 if col in df_display.columns:
                     df_display[col] = df_display[col].apply(lambda x: "✔" if x else "✘")
 
+            # 顯示表格
             gb = GridOptionsBuilder.from_dataframe(df_display)
             gb.configure_selection("multiple", use_checkbox=True)
             grid_options = gb.build()
@@ -363,12 +368,10 @@ elif menu == "🚚 批次出貨":
                 theme="material"
             )
 
-            
-            selected_rows = grid_response["selected_rows"]
+            selected = grid_response["selected_rows"]
 
-            if selected_rows:
-                selected_df = pd.DataFrame(selected_rows)
-                selected_ids = selected_df["訂單編號"].tolist()
+            if isinstance(selected, list) and len(selected) > 0:
+                selected_ids = [row["訂單編號"] for row in selected]
                 st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
 
                 col1, col2 = st.columns(2)
@@ -442,6 +445,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
