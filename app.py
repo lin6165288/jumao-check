@@ -363,12 +363,12 @@ elif menu == "🚚 批次出貨":
                 theme="material"
             )
 
+            
             selected_rows = grid_response["selected_rows"]
-            selected_indices = [r["_selectedRowNodeInfo"]["nodeRowIndex"] for r in selected_rows]
 
-            if selected_indices:
-                selected_df = df.iloc[selected_indices]
-                selected_ids = selected_df["order_id"].tolist()
+            if selected_rows:
+                selected_df = pd.DataFrame(selected_rows)
+                selected_ids = selected_df["訂單編號"].tolist()
                 st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
 
                 col1, col2 = st.columns(2)
@@ -442,6 +442,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
