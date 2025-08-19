@@ -369,6 +369,10 @@ elif menu == "🚚 批次出貨":
 
             selected = grid_response["selected_rows"]
 
+            # 加這兩行來印出實際內容與型別
+            st.write("📋 選取類型:", type(selected))
+            st.write("📋 選取內容:", selected)
+
             selected_ids = []
 
             # ➤ 判斷 selected 是 list 或 DataFrame，都能正確處理
@@ -455,4 +459,5 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
