@@ -352,7 +352,7 @@ elif menu == "🚚 批次出貨":
             for col in ["是否到貨", "是否已運回", "提前運回"]:
                 if col in df_display.columns:
                     df_display[col] = df_display[col].apply(lambda x: "✔" if x else "✘")
-
+                    
             # 顯示表格
             gb = GridOptionsBuilder.from_dataframe(df_display)
             gb.configure_selection("multiple", use_checkbox=True)
@@ -368,10 +368,14 @@ elif menu == "🚚 批次出貨":
                 theme="material"
             )
 
-            selected = grid_response["selected_rows"]
+            # 🟡 這裡取回原始 DataFrame 中的索引
+            selected_rows = grid_response["selected_rows"]
+            selected_indices = [r["_selectedRowNodeInfo"]["nodeRowIndex"] for r in selected_rows]
 
-            if selected and isinstance(selected, list) and len(selected) > 0:
-                selected_ids = [row["訂單編號"] for row in selected]
+            # 🟢 依照選取的 index 回推原始 df（非 df_display）
+            if selected_indices:
+                selected_df = df.iloc[selected_indices]
+                selected_ids = selected_df["order_id"].tolist()
                 st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
 
                 col1, col2 = st.columns(2)
@@ -446,6 +450,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
