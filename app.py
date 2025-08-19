@@ -370,8 +370,8 @@ elif menu == "🚚 批次出貨":
 
             selected = grid_response["selected_rows"]
 
-            if isinstance(selected, pd.DataFrame) and not selected.empty:
-                selected_ids = selected["訂單編號"].tolist()
+            if isinstance(selected, list) and len(selected) > 0:
+                selected_ids = [row["訂單編號"] for row in selected]
                 st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
 
                 col1, col2 = st.columns(2)
@@ -397,9 +397,7 @@ elif menu == "🚚 批次出貨":
                             st.error(f"❌ 發生錯誤：{e}")
             else:
                 st.info("📋 請勾選欲標記的訂單")
-
-
-
+                
 # 6. 利潤報表/匯出
 
 elif menu == "💰 利潤報表/匯出":
@@ -447,6 +445,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
