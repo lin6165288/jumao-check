@@ -353,54 +353,54 @@ elif menu == "🚚 批次出貨":
                 if col in df_display.columns:
                     df_display[col] = df_display[col].apply(lambda x: "✔" if x else "✘")
                     
-            # 顯示表格
-            gb = GridOptionsBuilder.from_dataframe(df_display)
-            gb.configure_selection("multiple", use_checkbox=True)
-            grid_options = gb.build()
+                        # 顯示表格
+                        gb = GridOptionsBuilder.from_dataframe(df_display)
+                        gb.configure_selection("multiple", use_checkbox=True)
+                        grid_options = gb.build()
 
-            grid_response = AgGrid(
-                df_display,
-                gridOptions=grid_options,
-                update_mode=GridUpdateMode.SELECTION_CHANGED,
-                data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-                fit_columns_on_grid_load=True,
-                height=400,
-                theme="material"
-            )
+                        grid_response = AgGrid(
+                            df_display,
+                            gridOptions=grid_options,
+                            update_mode=GridUpdateMode.SELECTION_CHANGED,
+                            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+                            fit_columns_on_grid_load=True,
+                            height=400,
+                            theme="material"
+                        )
 
-            # 🟡 這裡取回原始 DataFrame 中的索引
-            selected_rows = grid_response["selected_rows"]
-            selected_indices = [r["_selectedRowNodeInfo"]["nodeRowIndex"] for r in selected_rows]
+                        # 🟡 這裡取回原始 DataFrame 中的索引
+                        selected_rows = grid_response["selected_rows"]
+                        selected_indices = [r["_selectedRowNodeInfo"]["nodeRowIndex"] for r in selected_rows]
 
-            # 🟢 依照選取的 index 回推原始 df（非 df_display）
-            if selected_indices:
-                selected_df = df.iloc[selected_indices]
-                selected_ids = selected_df["order_id"].tolist()
-                st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
+                        # 🟢 依照選取的 index 回推原始 df（非 df_display）
+                        if selected_indices:
+                            selected_df = df.iloc[selected_indices]
+                            selected_ids = selected_df["order_id"].tolist()
+                            st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
 
-                col1, col2 = st.columns(2)
+                            col1, col2 = st.columns(2)
 
-                with col1:
-                    if st.button("🚚 標記為『已運回』"):
-                        try:
-                            sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
-                            cursor.execute(sql, selected_ids)
-                            conn.commit()
-                            st.success("🚚 更新成功：已標記為『已運回』")
-                        except Exception as e:
-                            st.error(f"❌ 發生錯誤：{e}")
+                            with col1:
+                                if st.button("🚚 標記為『已運回』"):
+                                    try:
+                                        sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
+                                        cursor.execute(sql, selected_ids)
+                                        conn.commit()
+                                        st.success("🚚 更新成功：已標記為『已運回』")
+                                    except Exception as e:
+                                        st.error(f"❌ 發生錯誤：{e}")
 
-                with col2:
-                    if st.button("📦 標記為『提前運回』"):
-                        try:
-                            sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
-                            cursor.execute(sql, selected_ids)
-                            conn.commit()
-                            st.success("📦 更新成功：已標記為『提前運回』")
-                        except Exception as e:
-                            st.error(f"❌ 發生錯誤：{e}")
-            else:
-                st.info("📋 請勾選欲標記的訂單")
+                            with col2:
+                                if st.button("📦 標記為『提前運回』"):
+                                    try:
+                                        sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
+                                        cursor.execute(sql, selected_ids)
+                                        conn.commit()
+                                        st.success("📦 更新成功：已標記為『提前運回』")
+                                    except Exception as e:
+                                        st.error(f"❌ 發生錯誤：{e}")
+                        else:
+                            st.info("📋 請勾選欲標記的訂單")
 
                 
 # 6. 利潤報表/匯出
@@ -450,6 +450,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
