@@ -314,6 +314,7 @@ elif menu == "📦 可出貨名單":
         )
 
 # =====🚚 批次出貨=====
+# =====🚚 批次出貨=====
 
 elif menu == "🚚 批次出貨":
     st.subheader("🚚 批次出貨")
@@ -369,19 +370,8 @@ elif menu == "🚚 批次出貨":
 
             selected = grid_response["selected_rows"]
 
-            # 加這兩行來印出實際內容與型別
-            st.write("📋 選取類型:", type(selected))
-            st.write("📋 選取內容:", selected)
-
-            selected_ids = []
-
-            # ➤ 判斷 selected 是 list 或 DataFrame，都能正確處理
-            if isinstance(selected, list) and len(selected) > 0:
-                selected_ids = [row["訂單編號"] for row in selected if isinstance(row, dict) and "訂單編號" in row]
-            elif isinstance(selected, pd.DataFrame) and not selected.empty:
+            if isinstance(selected, pd.DataFrame) and not selected.empty:
                 selected_ids = selected["訂單編號"].tolist()
-
-            if selected_ids:
                 st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
 
                 col1, col2 = st.columns(2)
@@ -407,8 +397,6 @@ elif menu == "🚚 批次出貨":
                             st.error(f"❌ 發生錯誤：{e}")
             else:
                 st.info("📋 請勾選欲標記的訂單")
-
-
 
 
 
@@ -459,5 +447,6 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
