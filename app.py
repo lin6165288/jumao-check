@@ -370,33 +370,34 @@ elif menu == "🚚 批次出貨":
 
             selected = grid_response["selected_rows"]
 
-            if isinstance(selected, list) and len(selected) > 0:
-                selected_ids = [row["訂單編號"] for row in selected]
-                st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
+if selected and isinstance(selected, list) and len(selected) > 0:
+    selected_ids = [row["訂單編號"] for row in selected]
+    st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
 
-                col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-                with col1:
-                    if st.button("🚚 標記為『已運回』"):
-                        try:
-                            sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
-                            cursor.execute(sql, selected_ids)
-                            conn.commit()
-                            st.success("🚚 更新成功：已標記為『已運回』")
-                        except Exception as e:
-                            st.error(f"❌ 發生錯誤：{e}")
+    with col1:
+        if st.button("🚚 標記為『已運回』"):
+            try:
+                sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
+                cursor.execute(sql, selected_ids)
+                conn.commit()
+                st.success("🚚 更新成功：已標記為『已運回』")
+            except Exception as e:
+                st.error(f"❌ 發生錯誤：{e}")
 
-                with col2:
-                    if st.button("📦 標記為『提前運回』"):
-                        try:
-                            sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
-                            cursor.execute(sql, selected_ids)
-                            conn.commit()
-                            st.success("📦 更新成功：已標記為『提前運回』")
-                        except Exception as e:
-                            st.error(f"❌ 發生錯誤：{e}")
-            else:
-                st.info("📋 請勾選欲標記的訂單")
+    with col2:
+        if st.button("📦 標記為『提前運回』"):
+            try:
+                sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
+                cursor.execute(sql, selected_ids)
+                conn.commit()
+                st.success("📦 更新成功：已標記為『提前運回』")
+            except Exception as e:
+                st.error(f"❌ 發生錯誤：{e}")
+else:
+    st.info("📋 請勾選欲標記的訂單")
+
                 
 # 6. 利潤報表/匯出
 
@@ -445,6 +446,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
