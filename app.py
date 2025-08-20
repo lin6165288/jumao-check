@@ -380,12 +380,10 @@ elif menu == "🚚 批次出貨":
 
             
             if picked_ids:
-                # ① 加總：公斤數 / 金額（有字串也能處理）
                 sel = df["order_id"].isin(picked_ids)
                 total_weight = pd.to_numeric(df.loc[sel, "weight_kg"], errors="coerce").fillna(0).sum()
-                total_amount = pd.to_numeric(df.loc[sel, "amount_rmb"], errors="coerce").fillna(0).sum()
 
-                st.success(f"✅ 已選擇 {len(picked_ids)} 筆訂單，共 {total_weight:.2f} 公斤，總金額 ¥{total_amount:,.0f}")
+                st.success(f"✅ 已選擇 {len(picked_ids)} 筆訂單，共 {total_weight:.2f} 公斤")
 
                 c1, c2 = st.columns(2)
 
@@ -464,6 +462,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
