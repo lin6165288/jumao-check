@@ -314,14 +314,14 @@ elif menu == "📦 可出貨名單":
         )
 
 # =====🚚 批次出貨=====
-# =====🚚 批次出貨=====
+# =====🚚 批次出貨（保底版：data_editor 勾選）=====
 
 elif menu == "🚚 批次出貨":
     st.subheader("🚚 批次出貨")
 
     name = st.text_input("🔍 請輸入客戶姓名")
     if name.strip():
-        # 查詢訂單
+        # 1) 查詢訂單
         df = pd.read_sql(
             "SELECT * FROM orders WHERE customer_name LIKE %s",
             conn,
@@ -331,8 +331,9 @@ elif menu == "🚚 批次出貨":
         if df.empty:
             st.warning("⚠️ 查無資料")
         else:
-            # 顯示用表格（中文欄位＋✔✘）
+            # 2) 顯示用表格（中文欄位 + ✔✘），保留「訂單編號」作為更新依據
             df_display = df.copy()
+
             column_mapping = {
                 "order_id": "訂單編號",
                 "order_time": "下單日期",
@@ -349,54 +350,62 @@ elif menu == "🚚 批次出貨":
             }
             df_display = df_display.rename(columns=column_mapping)
 
+            # 轉日期/空值，避免序列化問題
+            if "下單日期" in df_display.columns:
+                df_display["下單日期"] = pd.to_datetime(df_display["下單日期"], errors="coerce").dt.strftime("%Y-%m-%d")
+            df_display = df_display.fillna("")
+
+            # 布林欄位顯示為 ✔/✘（只影響顯示）
             for col in ["是否到貨", "是否已運回", "提前運回"]:
                 if col in df_display.columns:
-                    df_display[col] = df_display[col].apply(lambda x: "✔" if x else "✘")
+                    df_display[col] = df_display[col].apply(lambda x: "✔" if bool(x) else "✘")
 
-            # 顯示表格
-            gb = GridOptionsBuilder.from_dataframe(df_display)
-            gb.configure_selection("multiple", use_checkbox=True)
-            grid_options = gb.build()
+            # 3) data_editor：加「✅ 選取」欄 / 只允許勾選該欄
+            ui = df_display.copy()
+            if "✅ 選取" not in ui.columns:
+                ui.insert(0, "✅ 選取", False)
 
-            grid_response = AgGrid(
-                df_display,
-                gridOptions=grid_options,
-                update_mode=GridUpdateMode.SELECTION_CHANGED,
-                data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-                fit_columns_on_grid_load=True,
-                height=400,
-                theme="material"
+            disabled_cols = [c for c in ui.columns if c != "✅ 選取"]
+            edited = st.data_editor(
+                ui,
+                key="batch_editor",
+                hide_index=True,
+                disabled=disabled_cols,          # 只讓「✅ 選取」能變動
+                use_container_width=True,
+                height=420,
             )
 
-            selected = grid_response["selected_rows"]
+            # 4) 取得使用者勾選的「訂單編號」
+            picked_ids = edited.loc[edited["✅ 選取"] == True, "訂單編號"].tolist()
 
-            if isinstance(selected, list) and len(selected) > 0:
-                selected_ids = [row["訂單編號"] for row in selected]
-                st.success(f"✅ 已選擇 {len(selected_ids)} 筆訂單")
+            if picked_ids:
+                st.success(f"✅ 已選擇 {len(picked_ids)} 筆訂單")
 
-                col1, col2 = st.columns(2)
-
-                with col1:
+                c1, c2 = st.columns(2)
+                with c1:
                     if st.button("🚚 標記為『已運回』"):
                         try:
-                            sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
-                            cursor.execute(sql, selected_ids)
+                            placeholders = ",".join(["%s"] * len(picked_ids))
+                            sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({placeholders})"
+                            cursor.execute(sql, picked_ids)
                             conn.commit()
                             st.success("🚚 更新成功：已標記為『已運回』")
                         except Exception as e:
                             st.error(f"❌ 發生錯誤：{e}")
 
-                with col2:
+                with c2:
                     if st.button("📦 標記為『提前運回』"):
                         try:
-                            sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({','.join(['%s'] * len(selected_ids))})"
-                            cursor.execute(sql, selected_ids)
+                            placeholders = ",".join(["%s"] * len(picked_ids))
+                            sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({placeholders})"
+                            cursor.execute(sql, picked_ids)
                             conn.commit()
                             st.success("📦 更新成功：已標記為『提前運回』")
                         except Exception as e:
                             st.error(f"❌ 發生錯誤：{e}")
             else:
                 st.info("📋 請勾選欲標記的訂單")
+
                 
 # 6. 利潤報表/匯出
 
@@ -445,6 +454,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
