@@ -378,8 +378,12 @@ elif menu == "🚚 批次出貨":
             # 4) 取得使用者勾選的「訂單編號」
             picked_ids = edited.loc[edited["✅ 選取"] == True, "訂單編號"].tolist()
 
+            
             if picked_ids:
-                st.success(f"✅ 已選擇 {len(picked_ids)} 筆訂單")
+                # 計算勾選的總公斤數
+                total_weight = df.loc[df["order_id"].isin(picked_ids), "weight_kg"].sum()
+
+                st.success(f"✅ 已選擇 {len(picked_ids)} 筆訂單，共 {total_weight:.2f} 公斤")
 
                 c1, c2 = st.columns(2)
                 with c1:
@@ -389,20 +393,21 @@ elif menu == "🚚 批次出貨":
                             sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({placeholders})"
                             cursor.execute(sql, picked_ids)
                             conn.commit()
-                            st.success("🚚 更新成功：已標記為『已運回』")
+                           st.success("🚚 更新成功：已標記為『已運回』")
                         except Exception as e:
                             st.error(f"❌ 發生錯誤：{e}")
-
+            
                 with c2:
                     if st.button("📦 標記為『提前運回』"):
                         try:
                             placeholders = ",".join(["%s"] * len(picked_ids))
-                            sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({placeholders})"
+                           sql = f"UPDATE orders SET is_early_returned = 1 WHERE order_id IN ({placeholders})"
                             cursor.execute(sql, picked_ids)
                             conn.commit()
                             st.success("📦 更新成功：已標記為『提前運回』")
                         except Exception as e:
                             st.error(f"❌ 發生錯誤：{e}")
+
             else:
                 st.info("📋 請勾選欲標記的訂單")
 
@@ -454,6 +459,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
