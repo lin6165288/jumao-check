@@ -592,10 +592,10 @@ elif menu == "💴 快速報價":
     st.subheader("💴 快速報價小工具")
 
     rmb = st.number_input("商品價格（RMB）", 0, step=10)
+    base_sell_rate = st.number_input("一般客戶匯率", value=4.6, step=0.01)
     vip_level = st.selectbox("VIP 等級", ["一般", "VIP1", "VIP2", "VIP3"])
 
     # ===== 計算邏輯 =====
-    BASE_SELL_RATE = 4.6  # 固定匯率
     VIP_FEE_DISCOUNT = {
         "一般": 1.00,
         "VIP1": 0.90,
@@ -609,8 +609,8 @@ elif menu == "💴 快速報價":
         bin = rmb // 500
         return 30 if bin == 0 else bin * 50
 
-    def quote_twd(rmb: int, level: str) -> int:
-        goods_ntd = rmb * BASE_SELL_RATE
+    def quote_twd(rmb: int, level: str, rate: float) -> int:
+        goods_ntd = rmb * rate
         base_fee = calc_base_fee(rmb)
         fee_after_discount = max(
             int(round(base_fee * VIP_FEE_DISCOUNT.get(level, 1.0))),
@@ -619,10 +619,8 @@ elif menu == "💴 快速報價":
         return int(round(goods_ntd + fee_after_discount))
 
     if rmb > 0:
-        total_ntd = quote_twd(rmb, vip_level)
+        total_ntd = quote_twd(rmb, vip_level, base_sell_rate)
         st.success(f"換算台幣價格：NT$ {total_ntd:,}")
-
-
 
 
 
