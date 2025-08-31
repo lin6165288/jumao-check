@@ -620,7 +620,8 @@ elif menu == "💴 快速報價":
 
     if rmb > 0:
         total_ntd = quote_twd(rmb, vip_level, base_sell_rate)
-        st.success(f"換算台幣價格：NT$ {total_ntd:,}")
+        st.success(f"【報價單】\n商品價格：{rmb} RMB\n換算台幣價格：NT$ {total_ntd:,}")
+
 
 
 
