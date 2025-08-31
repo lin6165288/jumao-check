@@ -596,12 +596,7 @@ elif menu == "💴 快速報價":
     vip_level = st.selectbox("VIP 等級", ["一般", "VIP1", "VIP2", "VIP3"])
 
     # ===== 計算邏輯 =====
-    VIP_FEE_DISCOUNT = {
-        "一般": 1.00,
-        "VIP1": 0.90,
-        "VIP2": 0.85,
-        "VIP3": 0.80,
-    }
+    VIP_FEE_DISCOUNT = {"一般": 1.00, "VIP1": 0.90, "VIP2": 0.85, "VIP3": 0.80}
     MIN_FEE = 20  # 折扣後手續費下限
 
     def calc_base_fee(rmb: int) -> int:
@@ -612,16 +607,52 @@ elif menu == "💴 快速報價":
     def quote_twd(rmb: int, level: str, rate: float) -> int:
         goods_ntd = rmb * rate
         base_fee = calc_base_fee(rmb)
-        fee_after_discount = max(
-            int(round(base_fee * VIP_FEE_DISCOUNT.get(level, 1.0))),
-            MIN_FEE,
-        )
+        fee_after_discount = max(int(round(base_fee * VIP_FEE_DISCOUNT.get(level, 1.0))), MIN_FEE)
         return int(round(goods_ntd + fee_after_discount))
 
     if rmb > 0:
         total_ntd = quote_twd(rmb, vip_level, base_sell_rate)
         st.success(f"【報價單】\n商品價格：{rmb} RMB\n換算台幣價格：NT$ {total_ntd:,}")
 
+        # ===== 一鍵複製：報價文字（自動帶入） =====
+        quote_text = (
+            "[報價單]\n"
+            f"商品價格：{rmb} RMB\n"
+            f"換算台幣價格：NT$ {total_ntd:,}\n"
+            "沒問題的話跟我說一聲～\n"
+            "傳給您付款資訊"
+        )
+
+        # 預覽用
+        st.text_area("要複製的內容（預覽）", value=quote_text, height=120)
+
+        # 真的一鍵複製（用 components.html + Clipboard API）
+        import html as ihtml
+        import streamlit.components.v1 as components
+        components.html(
+            f"""
+            <div>
+              <button id="copyBtn" style="padding:8px 12px;border:none;border-radius:8px;cursor:pointer;">
+                📋 一鍵複製
+              </button>
+              <script>
+                const txt = "{ihtml.escape(quote_text).replace("\\n", "\\n").replace('"', '&quot;')}";
+                const btn = document.getElementById('copyBtn');
+                btn.addEventListener('click', async () => {{
+                  try {{
+                    await navigator.clipboard.writeText(txt);
+                    btn.textContent = '✅ 已複製';
+                    setTimeout(() => btn.textContent = '📋 一鍵複製', 1500);
+                  }} catch (e) {{
+                    btn.textContent = '❌ 複製失敗';
+                    setTimeout(() => btn.textContent = '📋 一鍵複製', 1500);
+                  }}
+                }});
+              </script>
+            </div>
+            """,
+            height=50,
+        )
 
 
 
