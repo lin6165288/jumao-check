@@ -322,17 +322,13 @@ elif menu == "📦 可出貨名單":
         )
         
             # ====== 統整：同客戶 包裹數 / 總公斤數 / 總國際運費 ======
-        
 
-        st.markdown("### 📦 出貨統整")
+        st.markdown("### 📦 可出貨統整")
 
-        # 用原始欄位計算（df 還是原生英文欄位時就已經 copy 了）
         df_calc = df_all[(cond1 | cond2) & not_returned].copy()
-
-        # 1) 只計入 weight_kg > 0 的包裹數與重量
         df_nonzero = df_calc[df_calc["weight_kg"] > 0].copy()
 
-        # 2) 先依「客戶 × 平台」合併重量（符合實務上同平台合箱計價）
+        # 依「客戶 × 平台」合併
         grp = (
             df_nonzero
             .groupby(["customer_name", "platform"], as_index=False)
@@ -340,18 +336,19 @@ elif menu == "📦 可出貨名單":
                  pkg_cnt=("order_id", "count"))
         )
 
-        # 3) 依平台設定單價與計價重量（0.5kg 進位，最低 1kg）
-        def billed_weight(w):
-            return max(1.0, math.ceil(w / 0.5) * 0.5)
+        # 計價規則
+        def billed_weight(w, pf):
+            base = 1.0 if pf == "集運" else 0.5
+            return max(base, math.ceil(w / 0.5) * 0.5)
 
         def unit_price(pf):
             return 75.0 if pf == "集運" else 60.0
 
-        grp["billed_w"] = grp["total_w"].apply(billed_weight)
+        grp["billed_w"] = grp.apply(lambda r: billed_weight(r["total_w"], r["platform"]), axis=1)
         grp["price_per_kg"] = grp["platform"].apply(unit_price)
         grp["fee"] = grp["billed_w"] * grp["price_per_kg"]
 
-        # 4) 回到「同客戶」層級：合併不同平台的金額；同時統計總包裹數與總重量
+        # 合併回客戶層級
         summary = (
             grp.groupby("customer_name", as_index=False)
                .agg(包裹總數=("pkg_cnt", "sum"),
@@ -359,13 +356,20 @@ elif menu == "📦 可出貨名單":
                     總國際運費=("fee", "sum"))
         )
 
-        # 排序一下（可改）
         summary = summary.sort_values(["總國際運費", "總公斤數"], ascending=[False, False])
-
-        # 顯示
         st.dataframe(summary, use_container_width=True)
 
-        
+        # 匯出
+        towrite2 = io.BytesIO()
+        summary.to_excel(towrite2, index=False, engine="openpyxl")
+        towrite2.seek(0)
+        st.download_button(
+            label="📥 下載可出貨統整.xlsx",
+            data=towrite2,
+            file_name="可出貨統整.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
 
@@ -582,6 +586,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
