@@ -593,40 +593,34 @@ elif menu == "💴 快速報價":
 
     rmb = st.number_input("商品價格（RMB）", 0, step=10)
     vip_level = st.selectbox("VIP 等級", ["一般", "VIP1", "VIP2", "VIP3"])
-    use_coupon = st.checkbox("VIP3 用券（滿 2000 折 50）")
 
-    # ===== 計算邏輯（匯率固定，不動匯率，只折手續費）=====
-    BASE_SELL_RATE = 4.6  # 匯率固定
-    # 手續費折扣係數：一般=1.0、VIP1=0.9、VIP2=0.85、VIP3=0.8
-    VIP_FEE_DISCOUNT = {"一般": 1.00, "VIP1": 0.90, "VIP2": 0.85, "VIP3": 0.80}
-    MIN_FEE = 20  # 折扣後的手續費底線（NT$）
+    # ===== 計算邏輯 =====
+    BASE_SELL_RATE = 4.6  # 固定匯率
+    VIP_FEE_DISCOUNT = {
+        "一般": 1.00,
+        "VIP1": 0.90,
+        "VIP2": 0.85,
+        "VIP3": 0.80,
+    }
+    MIN_FEE = 20  # 折扣後手續費下限
 
     def calc_base_fee(rmb: int) -> int:
         # 以 500 RMB 為級距：0~499→30；每多一個 500 → +50
         bin = rmb // 500
         return 30 if bin == 0 else bin * 50
 
-    def quote_twd(rmb: int, level: str, use_coupon: bool):
+    def quote_twd(rmb: int, level: str) -> int:
         goods_ntd = rmb * BASE_SELL_RATE
         base_fee = calc_base_fee(rmb)
-        # 只對「手續費」打折
-        fee_after_discount = max(int(round(base_fee * VIP_FEE_DISCOUNT.get(level, 1.0))), MIN_FEE)
-        # VIP3 專屬券：滿 2000 RMB 折 50 NTD（折總價）
-        coupon_cut = 50 if (level == "VIP3" and use_coupon and rmb >= 2000) else 0
-        total_ntd = int(round(goods_ntd + fee_after_discount - coupon_cut))
-        return total_ntd, goods_ntd, base_fee, fee_after_discount, coupon_cut
+        fee_after_discount = max(
+            int(round(base_fee * VIP_FEE_DISCOUNT.get(level, 1.0))),
+            MIN_FEE,
+        )
+        return int(round(goods_ntd + fee_after_discount))
 
     if rmb > 0:
-        total, goods_ntd, base_fee, fee_disc, coupon = quote_twd(rmb, vip_level, use_coupon)
-        st.success(
-            "【報價單】\n"
-            f"商品價格：{rmb} RMB × 匯率 {BASE_SELL_RATE} = NT$ {goods_ntd:,.0f}\n"
-            f"手續費（{vip_level}）：NT$ {base_fee} → NT$ {fee_disc}\n"
-            f"優惠券折抵：NT$ {coupon}\n"
-            f"— — — — —\n"
-            f"換算台幣總價：NT$ {total:,.0f}"
-        )
-
+        total_ntd = quote_twd(rmb, vip_level)
+        st.success(f"換算台幣價格：NT$ {total_ntd:,}")
 
 
 
