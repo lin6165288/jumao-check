@@ -617,11 +617,11 @@ elif menu == "💴 快速報價":
         # ===== 一鍵複製：報價文字（自動帶入） =====
         
         quote_text = (
-            "([)報價單(])\n"
+            "【報價單】\n"
             f"商品價格：{rmb} RMB\n"
-            f"換算台幣價格：NT$ {total_ntd:,}\n"
+            f"換算台幣價格：{total_ntd:,} 台幣\n"
             "沒問題的話跟我說一聲～\n"
-            "傳給您付款資訊(cony big smile)"
+            "傳給您付款資訊💕"
         )
 
         # 預覽（方便手動複製）
@@ -660,6 +660,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
