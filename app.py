@@ -5,7 +5,15 @@ import time
 from datetime import datetime
 import io
 import re
+import math
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+
+
+def round_weight(w):
+    if w < 0.1:
+        return 0.1
+    # math.ceil(x) * 0.05 會往上進位到最近的 0.05
+    return round(math.ceil(w / 0.05) * 0.05, 2)
 
 # ===== 表格格式化工具：欄位改中文＋布林值轉 ✔ / ✘ =====
 def format_order_df(df):
@@ -340,7 +348,9 @@ elif menu == "📥 貼上入庫訊息":
             for p in patterns:
                 m = re.search(p, line, flags=re.IGNORECASE)
                 if m:
-                    matched = (m.group(1), float(m.group(2)))
+                    raw_w = float(m.group(2))
+                    adj_w = round_weight(raw_w)
+                    matched = (m.group(1), adj_w)
                     break
             if matched:
                 found.append(matched)
@@ -526,6 +536,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
