@@ -17,7 +17,7 @@ st.set_page_config(page_title="橘貓代購｜訂單查詢系統")
 st.title("🧡 橘貓代購｜訂單查詢系統")
 
 # === 查詢條件 ===
-name = st.text_input("姓名（精準比對，英文大小寫不分）")
+name = st.text_input("請輸入登記包裹用名稱(默認line名稱)")
 c1, c2 = st.columns(2)
 with c1:
     only_arrived = st.checkbox("只看已到貨", value=False)
@@ -75,7 +75,7 @@ if st.button("🔎 查詢"):
             conn.close()
 
             # 顯示統計卡片
-            st.subheader("📦 已到貨且未運回（可運回）總覽")
+            st.subheader("📦 已到貨且未運回包裹總覽")
             m1, m2 = st.columns(2)
             m1.metric("包裹數量", int(stat["cnt"]))
             m2.metric("重量總重（kg）", f"{float(stat['total_weight']):.2f}")
@@ -91,3 +91,4 @@ if st.button("🔎 查詢"):
 
         except Error as e:
             st.error(f"資料庫錯誤：{e}")
+
