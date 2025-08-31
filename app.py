@@ -60,7 +60,7 @@ st.title("🐾 橘貓代購｜訂單管理系統")
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
-    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息", "🚚 批次出貨", "💰 利潤報表/匯出"
+    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息", "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價小工具"
 ])
 
 # ===== 功能實作 =====
@@ -586,6 +586,35 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+# 7. 快速報價
+elif menu == "💴 快速報價":
+    st.subheader("💴 快速報價小工具")
+
+    rmb = st.number_input("商品價格（RMB）", 0, step=10)
+    vip_level = st.selectbox("VIP 等級", ["一般", "VIP1", "VIP2", "VIP3"])
+    use_coupon = st.checkbox("VIP3 用券（滿 2000 折 50）")
+
+    # ===== 計算邏輯 =====
+    BASE_SELL_RATE = 4.5
+    VIP_RATE_OFF = {"一般": 0.00, "VIP1": 0.02, "VIP2": 0.03, "VIP3": 0.05}
+    VIP_FEE_OFF  = {"一般": 0,    "VIP1": 10,   "VIP2": 10,   "VIP3": 10}
+    MIN_FEE = 20
+
+    def calc_base_fee(rmb: int) -> int:
+        return 30 + (rmb // 500) * 50
+
+    def quote_twd(rmb: int, level: str, use_coupon: bool) -> int:
+        sell_rate = BASE_SELL_RATE - VIP_RATE_OFF.get(level, 0.0)
+        fee = calc_base_fee(rmb)
+        if level != "一般":
+            fee = max(fee - VIP_FEE_OFF.get(level, 0), MIN_FEE)
+        coupon_cut = 50 if (level == "VIP3" and use_coupon and rmb >= 2000) else 0
+        return int(round(rmb * sell_rate + fee - coupon_cut))
+
+    if rmb > 0:
+        twd = quote_twd(rmb, vip_level, use_coupon)
+        st.success(f"【報價單】\n商品價格：{rmb} RMB\n換算台幣價格：NT$ {twd}")
 
 
 
