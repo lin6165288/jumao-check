@@ -615,47 +615,42 @@ elif menu == "💴 快速報價":
         st.success(f"【報價單】\n商品價格：{rmb} RMB\n換算台幣價格：NT$ {total_ntd:,}")
 
         # ===== 一鍵複製：報價文字（自動帶入） =====
+        
+                # ===== 一鍵複製：報價文字（自動帶入） =====
         quote_text = (
-            "[報價單]\n"
+            "([)報價單(])\n"
             f"商品價格：{rmb} RMB\n"
             f"換算台幣價格：NT$ {total_ntd:,}\n"
             "沒問題的話跟我說一聲～\n"
-            "傳給您付款資訊"
+            "傳給您付款資訊(cony big smile)"
         )
 
-        # 預覽用
+        # 預覽（手動也可複製）
         st.text_area("要複製的內容（預覽）", value=quote_text, height=120)
 
-        # 真的一鍵複製（用 components.html + Clipboard API）
+        # 更高相容性的複製做法（不用 navigator.clipboard，支援非 HTTPS）
         import html as ihtml
         import streamlit.components.v1 as components
+
+        escaped = ihtml.escape(quote_text).replace("\n", "&#10;")  # 保留換行
         components.html(
             f"""
             <div>
+              <textarea id="copySrc" style="position:absolute;left:-9999px;top:-9999px;">{escaped}</textarea>
               <button id="copyBtn" style="padding:8px 12px;border:none;border-radius:8px;cursor:pointer;">
                 📋 一鍵複製
               </button>
               <script>
-                const txt = "{ihtml.escape(quote_text).replace("\\n", "\\n").replace('"', '&quot;')}";
                 const btn = document.getElementById('copyBtn');
-                btn.addEventListener('click', async () => {{
+                const ta  = document.getElementById('copySrc');
+                btn.addEventListener('click', function() {{
                   try {{
-                    await navigator.clipboard.writeText(txt);
-                    btn.textContent = '✅ 已複製';
-                    setTimeout(() => btn.textContent = '📋 一鍵複製', 1500);
+                    ta.select();
+                    ta.setSelectionRange(0, 999999);  // iOS 相容
+                    const ok = document.execCommand('copy');
+                    btn.textContent = ok ? '✅ 已複製' : '❌ 複製失敗';
                   }} catch (e) {{
                     btn.textContent = '❌ 複製失敗';
-                    setTimeout(() => btn.textContent = '📋 一鍵複製', 1500);
-                  }}
-                }});
-              </script>
-            </div>
-            """,
-            height=50,
-        )
-
-
-
 
 
 
