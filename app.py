@@ -320,6 +320,52 @@ elif menu == "📦 可出貨名單":
             file_name="可出貨名單.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+        
+            # ====== 統整：同客戶 包裹數 / 總公斤數 / 總國際運費 ======
+        
+
+        st.markdown("### 📦 出貨統整")
+
+        # 用原始欄位計算（df 還是原生英文欄位時就已經 copy 了）
+        df_calc = df_all[(cond1 | cond2) & not_returned].copy()
+
+        # 1) 只計入 weight_kg > 0 的包裹數與重量
+        df_nonzero = df_calc[df_calc["weight_kg"] > 0].copy()
+
+        # 2) 先依「客戶 × 平台」合併重量（符合實務上同平台合箱計價）
+        grp = (
+            df_nonzero
+            .groupby(["customer_name", "platform"], as_index=False)
+            .agg(total_w=("weight_kg", "sum"),
+                 pkg_cnt=("order_id", "count"))
+        )
+
+        # 3) 依平台設定單價與計價重量（0.5kg 進位，最低 1kg）
+        def billed_weight(w):
+            return max(1.0, math.ceil(w / 0.5) * 0.5)
+
+        def unit_price(pf):
+            return 75.0 if pf == "集運" else 60.0
+
+        grp["billed_w"] = grp["total_w"].apply(billed_weight)
+        grp["price_per_kg"] = grp["platform"].apply(unit_price)
+        grp["fee"] = grp["billed_w"] * grp["price_per_kg"]
+
+        # 4) 回到「同客戶」層級：合併不同平台的金額；同時統計總包裹數與總重量
+        summary = (
+            grp.groupby("customer_name", as_index=False)
+               .agg(包裹總數=("pkg_cnt", "sum"),
+                    總公斤數=("total_w", "sum"),
+                    總國際運費=("fee", "sum"))
+        )
+
+        # 排序一下（可改）
+        summary = summary.sort_values(["總國際運費", "總公斤數"], ascending=[False, False])
+
+        # 顯示
+        st.dataframe(summary, use_container_width=True)
+
+        
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
 
@@ -536,6 +582,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
