@@ -616,7 +616,6 @@ elif menu == "💴 快速報價":
 
         # ===== 一鍵複製：報價文字（自動帶入） =====
         
-                # ===== 一鍵複製：報價文字（自動帶入） =====
         quote_text = (
             "([)報價單(])\n"
             f"商品價格：{rmb} RMB\n"
@@ -625,34 +624,42 @@ elif menu == "💴 快速報價":
             "傳給您付款資訊(cony big smile)"
         )
 
-        # 預覽（手動也可複製）
+        # 預覽（方便手動複製）
         st.text_area("要複製的內容（預覽）", value=quote_text, height=120)
 
-        # 更高相容性的複製做法（不用 navigator.clipboard，支援非 HTTPS）
+        # —— 高相容一鍵複製（不使用 navigator.clipboard；不使用 f-string/.format）——
         import html as ihtml
         import streamlit.components.v1 as components
 
         escaped = ihtml.escape(quote_text).replace("\n", "&#10;")  # 保留換行
-        components.html(
-            f"""
+        html_block = (
+            '''
             <div>
-              <textarea id="copySrc" style="position:absolute;left:-9999px;top:-9999px;">{escaped}</textarea>
+              <textarea id="copySrc" style="position:absolute;left:-9999px;top:-9999px">'''
+            + escaped +
+            '''</textarea>
               <button id="copyBtn" style="padding:8px 12px;border:none;border-radius:8px;cursor:pointer;">
                 📋 一鍵複製
               </button>
               <script>
                 const btn = document.getElementById('copyBtn');
                 const ta  = document.getElementById('copySrc');
-                btn.addEventListener('click', function() {{
-                  try {{
+                btn.addEventListener('click', function () {
+                  try {
                     ta.select();
-                    ta.setSelectionRange(0, 999999);  // iOS 相容
+                    ta.setSelectionRange(0, 999999); // iOS 相容
                     const ok = document.execCommand('copy');
                     btn.textContent = ok ? '✅ 已複製' : '❌ 複製失敗';
-                  }} catch (e) {{
+                  } catch (e) {
                     btn.textContent = '❌ 複製失敗';
-
-
+                  }
+                  setTimeout(() => btn.textContent = '📋 一鍵複製', 1500);
+                });
+              </script>
+            </div>
+            '''
+        )
+        components.html(html_block, height=60)
 
 
 
