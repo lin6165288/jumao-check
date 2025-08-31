@@ -53,7 +53,7 @@ st.title("🐾 橘貓代購｜訂單管理系統")
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
-    "🔍 搜尋訂單", "📦 可出貨名單", "🚚 批次出貨", "💰 利潤報表/匯出"
+    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息", "🚚 批次出貨", "💰 利潤報表/匯出"
 ])
 
 # ===== 功能實作 =====
@@ -526,6 +526,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
