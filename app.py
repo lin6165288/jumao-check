@@ -601,8 +601,11 @@ elif menu == "💴 快速報價":
     VIP_FEE_OFF  = {"一般": 0,    "VIP1": 10,   "VIP2": 10,   "VIP3": 10}
     MIN_FEE = 20
 
+    
     def calc_base_fee(rmb: int) -> int:
-        return 30 + (rmb // 500) * 50
+        bin = rmb // 500
+        return 30 if bin == 0 else bin * 50
+
 
     def quote_twd(rmb: int, level: str, use_coupon: bool) -> int:
         sell_rate = BASE_SELL_RATE - VIP_RATE_OFF.get(level, 0.0)
@@ -615,6 +618,7 @@ elif menu == "💴 快速報價":
     if rmb > 0:
         twd = quote_twd(rmb, vip_level, use_coupon)
         st.success(f"【報價單】\n商品價格：{rmb} RMB\n換算台幣價格：NT$ {twd}")
+
 
 
 
