@@ -313,8 +313,71 @@ elif menu == "📦 可出貨名單":
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+# ========== 📥 貼上入庫訊息 → 自動更新 ==========
+import re
+
+elif menu == "📥 貼上入庫訊息":
+    st.subheader("📥 貼上入庫訊息 → 解析並更新到貨狀態")
+
+    raw = st.text_area("把 LINE 官方帳號的入庫訊息整段貼上（可多則）", height=260,
+                       placeholder="例：\n順豐快遞SF3280813696247，入庫重量 0.14 KG\n中通快遞78935908059095，入庫重量 0.27 KG\n...")
+
+    # 針對常見格式做多組樣式，盡量兼容
+    patterns = [
+        r'([A-Z]{1,3}\d{8,})[^0-9]*入庫重量\s*([0-9.]+)\s*KG',       # SF3280813696247 入庫重量 0.14 KG
+        r'(\d{9,})[^0-9]*入庫重量\s*([0-9.]+)\s*KG',                 # 78935908059095 入庫重量 0.27 KG
+        r'單號[:：]?\s*([A-Z0-9]{8,})[^0-9]*重量[:：]?\s*([0-9.]+)', # 備用：單號xxx 重量x.xx
+    ]
+
+    if st.button("🔎 解析"):
+        found = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            matched = None
+            for p in patterns:
+                m = re.search(p, line, flags=re.IGNORECASE)
+                if m:
+                    matched = (m.group(1), float(m.group(2)))
+                    break
+            if matched:
+                found.append(matched)
+
+        if not found:
+            st.warning("沒解析到任何『單號＋重量』，請確認範例格式或貼更多原文。")
+        else:
+            st.success(f"解析到 {len(found)} 筆：")
+            st.write(found)
+
+            # 寫回資料庫
+            updated, missing = 0, []
+            for tn, w in found:
+                # 依 tracking_number 更新
+                cursor.execute(
+                    """
+                    UPDATE orders 
+                    SET is_arrived = 1,
+                        weight_kg = %s,
+                        remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫', NOW())
+                    WHERE tracking_number = %s
+                    """,
+                    (w, tn)
+                )
+                if cursor.rowcount == 0:
+                    missing.append(tn)
+                else:
+                    updated += 1
+            conn.commit()
+
+            st.success(f"✅ 成功更新 {updated} 筆到貨資料")
+            if missing:
+                st.info("⚠️ 下列單號在資料庫找不到，請確認是否已建檔：")
+                st.write(missing)
+
+
+
 # =====🚚 批次出貨=====
-# =====🚚 批次出貨（保底版：data_editor 勾選）=====
 
 elif menu == "🚚 批次出貨":
     st.subheader("🚚 批次出貨")
@@ -462,6 +525,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
