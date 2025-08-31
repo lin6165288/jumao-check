@@ -621,7 +621,7 @@ elif menu == "💴 快速報價":
             f"商品價格：{rmb} RMB\n"
             f"換算台幣價格：{total_ntd:,} 台幣\n"
             "沒問題的話跟我說一聲～\n"
-            "傳給您付款資訊💕"
+            "傳給您付款資訊😽"
         )
 
         # 預覽（方便手動複製）
@@ -660,6 +660,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
