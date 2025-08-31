@@ -4,6 +4,7 @@ import pandas as pd
 import time
 from datetime import datetime
 import io
+import re
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # ===== 表格格式化工具：欄位改中文＋布林值轉 ✔ / ✘ =====
@@ -314,7 +315,7 @@ elif menu == "📦 可出貨名單":
         )
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
-import re
+
 
 elif menu == "📥 貼上入庫訊息":
     st.subheader("📥 貼上入庫訊息 → 解析並更新到貨狀態")
@@ -525,6 +526,7 @@ elif menu == "💰 利潤報表/匯出":
         file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
 
 
