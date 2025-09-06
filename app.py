@@ -739,7 +739,7 @@ elif menu == "💰 利潤報表/匯出":
 elif menu == "💴 快速報價":
     st.subheader("💴 快速報價小工具")
 
-    rmb = st.number_input("商品價格（RMB）", 0, step=10)
+    rmb = st.number_input("商品價格（RMB）", min_value=0.00, step=0.01, format="%.2f")
     base_sell_rate = st.number_input("一般客戶匯率", value=4.6, step=0.01)
     vip_level = st.selectbox("VIP 等級", ["一般", "VIP1", "VIP2", "VIP3"])
 
@@ -808,6 +808,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
