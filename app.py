@@ -417,13 +417,6 @@ elif menu == "📦 可出貨名單":
                 except Exception as e:
                     st.error(f"發生錯誤：{e}")
 
-        styled = edited.style.apply(
-            lambda row: ["background-color: #FFF3CD" if row["標記"]=="⚠️ 延後" else "" ]*len(row),
-            axis=1
-        )
-        with st.expander("顏色強調檢視（只讀）", expanded=False):
-            st.dataframe(styled, use_container_width=True)
-
         # ====== 原本統整：同客戶 包裹數 / 總公斤數 / 總國際運費（保留並加勾選/延後） ======
         st.markdown("### 📦 可出貨統整")
 
@@ -524,12 +517,6 @@ elif menu == "📦 可出貨名單":
                 except Exception as e:
                     st.error(f"發生錯誤：{e}")
 
-        styled_sum = edited_sum.style.apply(
-            lambda row: ["background-color: #FFE8A1" if row["標記"]=="⚠️ 含延後" else "" ]*len(row),
-            axis=1
-        )
-        with st.expander("顏色強調檢視（只讀）", expanded=False):
-            st.dataframe(styled_sum, use_container_width=True)
 
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
@@ -821,6 +808,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
