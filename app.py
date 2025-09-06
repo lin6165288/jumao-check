@@ -8,6 +8,41 @@ import re
 import math
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
+
+DELAY_TAG = "[延後]"
+
+def has_delay_tag(x: str) -> bool:
+    return (DELAY_TAG in str(x)) if x is not None else False
+
+def add_delay_tag_sql(order_ids):
+    # 在 remarks 前面加上 [延後] （若已存在則不重複）
+    placeholders = ",".join(["%s"] * len(order_ids))
+    sql = f"""
+        UPDATE orders
+        SET remarks = TRIM(
+            CONCAT(
+                '{DELAY_TAG} ',
+                COALESCE(NULLIF(remarks,''), '')
+            )
+        )
+        WHERE order_id IN ({placeholders})
+          AND (remarks IS NULL OR remarks NOT LIKE %s)
+    """
+    params = [*order_ids, f"%{DELAY_TAG}%"]
+    return sql, params
+
+def remove_delay_tag_sql(order_ids):
+    # 選用：移除 [延後] 標記
+    placeholders = ",".join(["%s"] * len(order_ids))
+    sql = f"""
+        UPDATE orders
+        SET remarks = TRIM(REPLACE(COALESCE(remarks,''), '{DELAY_TAG}', ''))
+        WHERE order_id IN ({placeholders})
+    """
+    params = [*order_ids]
+    return sql, params
+
+
 def round_weight(w):
     if w < 0.1:
         return 0.1
@@ -302,44 +337,113 @@ elif menu == "📦 可出貨名單":
         # 最終篩選：符合 cond1 or cond2，且還沒運回
         df = df_all[(cond1 | cond2) & not_returned].copy()
 
-        # 新增「單號後四碼」
+        # ======== 原本名單（保留原顯示與整份下載） ========
         df["單號後四碼"] = df["tracking_number"].astype(str).str[-4:]
+        df_show_all = format_order_df(df.copy())
+        st.dataframe(df_show_all)
 
-        # 中文化 + ✔/✘
-        df = format_order_df(df)
-
-        st.dataframe(df)
-
-        # 下載按鈕
-        towrite = io.BytesIO()
-        df.to_excel(towrite, index=False, engine="openpyxl")
-        towrite.seek(0)
+        towrite_full = io.BytesIO()
+        df_show_all.to_excel(towrite_full, index=False, engine="openpyxl")
+        towrite_full.seek(0)
         st.download_button(
-            label="📥 下載可出貨名單.xlsx",
-            data=towrite,
+            label="📥 下載可出貨名單.xlsx（全部）",
+            data=towrite_full,
             file_name="可出貨名單.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        
-            # ====== 統整：同客戶 包裹數 / 總公斤數 / 總國際運費 ======
 
+        st.divider()
+
+        # ======== 加：打勾只下載 + 延後運回（不改 DB 結構，用 remarks 的 [延後]） ========
+        df["delayed_flag"] = df["remarks"].apply(has_delay_tag)
+
+        df_display = format_order_df(df.copy())
+        # 顯示延後標籤欄
+        df_display.insert(1, "標記", df["delayed_flag"].map(lambda b: "⚠️ 延後" if b else ""))
+        # 勾選欄
+        if "✅ 選取" not in df_display.columns:
+            df_display.insert(0, "✅ 選取", False)
+
+        edited = st.data_editor(
+            df_display,
+            key="ready_editor",
+            hide_index=True,
+            disabled=[c for c in df_display.columns if c != "✅ 選取"],
+            use_container_width=True,
+            height=460,
+            column_config={
+                "✅ 選取": st.column_config.CheckboxColumn("✅ 選取", help="勾選要下載/延後的訂單"),
+            },
+        )
+
+        picked_ids = df.loc[edited["✅ 選取"].values, "order_id"].tolist()
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            # 只匯出勾選名單
+            buf = io.BytesIO()
+            out_df = edited[edited["✅ 選取"] == True].drop(columns=["✅ 選取"]).copy()
+            out_df.to_excel(buf, index=False, engine="openpyxl")
+            buf.seek(0)
+            st.download_button(
+                "📥 下載可出貨名單（只含勾選）",
+                data=buf,
+                file_name="可出貨名單_只含勾選.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                disabled=len(picked_ids)==0,
+                use_container_width=True
+            )
+
+        with c2:
+            if st.button("⏰ 延後運回（標記勾選）", disabled=len(picked_ids)==0, use_container_width=True):
+                try:
+                    sql, params = add_delay_tag_sql(picked_ids)
+                    cursor.execute(sql, params)
+                    conn.commit()
+                    st.success(f"已標記 {len(picked_ids)} 筆為【延後運回】。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        with c3:
+            # 選用：取消延後
+            if st.button("🧹 取消延後（勾選）", disabled=len(picked_ids)==0, use_container_width=True):
+                try:
+                    sql2, params2 = remove_delay_tag_sql(picked_ids)
+                    cursor.execute(sql2, params2)
+                    conn.commit()
+                    st.success(f"已移除 {len(picked_ids)} 筆的【延後】標記。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        styled = edited.style.apply(
+            lambda row: ["background-color: #FFF3CD" if row["標記"]=="⚠️ 延後" else "" ]*len(row),
+            axis=1
+        )
+        with st.expander("顏色強調檢視（只讀）", expanded=False):
+            st.dataframe(styled, use_container_width=True)
+
+        # ====== 原本統整：同客戶 包裹數 / 總公斤數 / 總國際運費（保留並加勾選/延後） ======
         st.markdown("### 📦 可出貨統整")
 
         df_calc = df_all[(cond1 | cond2) & not_returned].copy()
-        df_nonzero = df_calc[df_calc["weight_kg"] > 0].copy()
+        df_calc["delayed_flag"] = df_calc["remarks"].apply(has_delay_tag)
+        df_nonzero = df_calc[pd.to_numeric(df_calc["weight_kg"], errors="coerce").fillna(0) > 0].copy()
 
         # 依「客戶 × 平台」合併
         grp = (
             df_nonzero
             .groupby(["customer_name", "platform"], as_index=False)
             .agg(total_w=("weight_kg", "sum"),
-                 pkg_cnt=("order_id", "count"))
+                 pkg_cnt=("order_id", "count"),
+                 any_delay=("delayed_flag", "max"))
         )
 
         # 計價規則
         def billed_weight(w, pf):
             base = 1.0 if pf == "集運" else 0.5
-            return max(base, math.ceil(w / 0.5) * 0.5)
+            return max(base, math.ceil(float(w) / 0.5) * 0.5)
 
         def unit_price(pf):
             return 75.0 if pf == "集運" else 60.0
@@ -353,22 +457,79 @@ elif menu == "📦 可出貨名單":
             grp.groupby("customer_name", as_index=False)
                .agg(包裹總數=("pkg_cnt", "sum"),
                     總公斤數=("total_w", "sum"),
-                    總國際運費=("fee", "sum"))
+                    總國際運費=("fee", "sum"),
+                    含延後=("any_delay", "max"))
         )
-
         summary = summary.sort_values(["總國際運費", "總公斤數"], ascending=[False, False])
-        st.dataframe(summary, use_container_width=True)
 
-        # 匯出
-        towrite2 = io.BytesIO()
-        summary.to_excel(towrite2, index=False, engine="openpyxl")
-        towrite2.seek(0)
-        st.download_button(
-            label="📥 下載可出貨統整.xlsx",
-            data=towrite2,
-            file_name="可出貨統整.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        # 顯示用＋勾選
+        summary_display = summary.copy()
+        summary_display.rename(columns={"customer_name":"客戶姓名"}, inplace=True)
+        summary_display["含延後"] = summary_display["含延後"].apply(lambda b: "✔" if b else "✘")
+        summary_display.insert(0, "✅ 選取", False)
+        summary_display.insert(1, "標記", summary_display["含延後"].map(lambda x: "⚠️ 含延後" if x=="✔" else ""))
+
+        edited_sum = st.data_editor(
+            summary_display,
+            key="summary_editor",
+            hide_index=True,
+            disabled=[c for c in summary_display.columns if c != "✅ 選取"],
+            use_container_width=True,
+            height=420,
+            column_config={
+                "✅ 選取": st.column_config.CheckboxColumn("✅ 選取", help="勾選要下載/延後的客戶（會連同該客戶全部訂單）")
+            }
         )
+
+        picked_names = edited_sum.loc[edited_sum["✅ 選取"]==True, "客戶姓名"].tolist()
+
+        cc1, cc2, cc3 = st.columns(3)
+        with cc1:
+            buf2 = io.BytesIO()
+            out_sum = edited_sum[edited_sum["✅ 選取"]==True].drop(columns=["✅ 選取"]).copy()
+            out_sum.to_excel(buf2, index=False, engine="openpyxl")
+            buf2.seek(0)
+            st.download_button(
+                "📥 下載可出貨統整（只含勾選）",
+                data=buf2,
+                file_name="可出貨統整_只含勾選.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                disabled=len(picked_names)==0,
+                use_container_width=True
+            )
+
+        with cc2:
+            if st.button("⏰ 延後運回（標記勾選客戶底下所有訂單）", disabled=len(picked_names)==0, use_container_width=True):
+                try:
+                    ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
+                    if ids:
+                        sql, params = add_delay_tag_sql(ids)
+                        cursor.execute(sql, params)
+                        conn.commit()
+                        st.success(f"已標記 {len(ids)} 筆訂單為【延後運回】。")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        with cc3:
+            if st.button("🧹 取消延後（勾選客戶）", disabled=len(picked_names)==0, use_container_width=True):
+                try:
+                    ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
+                    if ids:
+                        sql2, params2 = remove_delay_tag_sql(ids)
+                        cursor.execute(sql2, params2)
+                        conn.commit()
+                        st.success(f"已移除 {len(ids)} 筆的【延後】標記。")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        styled_sum = edited_sum.style.apply(
+            lambda row: ["background-color: #FFE8A1" if row["標記"]=="⚠️ 含延後" else "" ]*len(row),
+            axis=1
+        )
+        with st.expander("顏色強調檢視（只讀）", expanded=False):
+            st.dataframe(styled_sum, use_container_width=True)
 
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
@@ -660,6 +821,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
