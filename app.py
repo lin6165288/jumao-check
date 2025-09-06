@@ -9,7 +9,9 @@ import math
 import json, os
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
-#
+
+
+# ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
 
 QUEUE_FILE = "failed_inbound_queue.json"
 
@@ -17,42 +19,77 @@ def _load_failed():
     if os.path.exists(QUEUE_FILE):
         try:
             with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
+                data = json.load(f)
+                # 容錯：非 list 時重設
+                return data if isinstance(data, list) else []
+        except Exception:
             return []
     return []
 
-def _save_failed(items):
-    with open(QUEUE_FILE, "w", encoding="utf-8") as f:
-        json.dump(items, f, ensure_ascii=False, indent=2)
+def _save_failed(items: list):
+    try:
+        with open(QUEUE_FILE, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"無法寫入佇列：{e}")
 
-def enqueue_failed(tracking, raw_line):
+def enqueue_failed(tracking_number: str, weight_kg: float, raw_message: str, err_msg: str = "找不到對應訂單"):
+    """記錄找不到的單號（去重：以 單號+重量+原文 當 signature）"""
     q = _load_failed()
-    sig = f"{tracking}|{raw_line}"
-    if not any(it.get("sig")==sig for it in q):
-        q.append({"sig": sig, "tracking": tracking, "raw": raw_line, "attempts": 0})
+    signature = f"{tracking_number}|{weight_kg}|{raw_message}"
+    if not any(it.get("signature") == signature for it in q):
+        q.append({
+            "signature": signature,
+            "tracking_number": tracking_number or "UNKNOWN",
+            "weight_kg": float(weight_kg) if weight_kg is not None else None,
+            "raw_message": raw_message or "",
+            "attempts": 0,
+            "last_error": err_msg or ""
+        })
         _save_failed(q)
 
-def retry_failed(conn):
+def retry_failed_all(conn):
+    """重試佇列：成功就移除，仍失敗則 attempts+1 並更新 last_error"""
     q = _load_failed()
-    if not q: return (0,0)
-    newq = []
+    if not q:
+        return (0, 0)
+
+    new_q = []
     ok, fail = 0, 0
     for it in q:
+        tn  = it.get("tracking_number") or ""
+        w   = it.get("weight_kg")
+        raw = it.get("raw_message", "")
         try:
-            df_o = pd.read_sql("SELECT order_id FROM orders WHERE tracking_number=%s", conn, params=[it["tracking"]])
-            if df_o.empty: 
+            df_o = pd.read_sql(
+                "SELECT order_id FROM orders WHERE tracking_number=%s",
+                conn, params=[tn]
+            )
+            if df_o.empty:
                 raise Exception("仍查無此單")
+
             order_id = int(df_o.iloc[0]["order_id"])
-            # 這裡放「成功更新」邏輯，依你原本程式
+
+            # ✅ 與你原本成功更新邏輯一致：is_arrived=1, weight_kg=解析後重量, 備註加「自動入庫」
             with conn.cursor() as cur:
-                cur.execute("UPDATE orders SET is_arrived=1 WHERE order_id=%s",(order_id,))
+                cur.execute("""
+                    UPDATE orders
+                    SET is_arrived = 1,
+                        weight_kg  = %s,
+                        remarks    = CONCAT(COALESCE(remarks,''), '｜自動入庫', NOW())
+                    WHERE order_id = %s
+                """, (w, order_id))
                 conn.commit()
             ok += 1
-        except Exception as e:
-            it["attempts"] += 1
-            it["last_error"] = str(e)
 
+        except Exception as e:
+            it["attempts"]   = int(it.get("attempts", 0)) + 1
+            it["last_error"] = str(e)[:250]
+            new_q.append(it)
+            fail += 1
+
+    _save_failed(new_q)
+    return (ok, fail)
 
 
 # ===
@@ -569,33 +606,43 @@ elif menu == "📦 可出貨名單":
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
 
-
 elif menu == "📥 貼上入庫訊息":
     st.subheader("📥 貼上入庫訊息 → 更新到貨狀態")
 
-    raw = st.text_area("把 LINE 官方帳號的入庫訊息整段貼上（可多則）", height=260,
-                       placeholder="例：\n順豐快遞SF3280813696247，入庫重量 0.14 KG\n中通快遞78935908059095，入庫重量 0.27 KG\n...")
+    raw = st.text_area(
+        "把 LINE 官方帳號的入庫訊息整段貼上（可多則）",
+        height=260,
+        placeholder="例：\n順豐快遞SF3280813696247，入庫重量 0.14 KG\n中通快遞78935908059095，入庫重量 0.27 KG\n..."
+    )
 
-    # 針對常見格式做多組樣式，盡量兼容
+    # 解析樣式（沿用你原本的）
     patterns = [
         r'([A-Z]{1,3}\d{8,})[^0-9]*入庫重量\s*([0-9.]+)\s*KG',       # SF3280813696247 入庫重量 0.14 KG
         r'(\d{9,})[^0-9]*入庫重量\s*([0-9.]+)\s*KG',                 # 78935908059095 入庫重量 0.27 KG
-        r'單號[:：]?\s*([A-Z0-9]{8,})[^0-9]*重量[:：]?\s*([0-9.]+)', # 備用：單號xxx 重量x.xx
+        r'單號[:：]?\s*([A-Z0-9]{8,})[^0-9]*重量[:：]?\s*([0-9.]+)',  # 備用：單號xxx 重量x.xx
     ]
 
-    if st.button("🔎 解析"):
+    # 進頁可選自動重試
+    auto_retry = st.toggle("進入此頁時自動重試佇列", value=True)
+    if auto_retry:
+        ok, fail = retry_failed_all(conn)
+        if ok or fail:
+            st.caption(f"🔁 自動重試：成功 {ok} 筆、仍待 {fail} 筆")
+
+    if st.button("🔎 解析並更新"):
         found = []
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line:
+        lines = raw.splitlines()
+        for line in lines:
+            t = line.strip()
+            if not t:
                 continue
             matched = None
             for p in patterns:
-                m = re.search(p, line, flags=re.IGNORECASE)
+                m = re.search(p, t, flags=re.IGNORECASE)
                 if m:
                     raw_w = float(m.group(2))
-                    adj_w = round_weight(raw_w)
-                    matched = (m.group(1), adj_w)
+                    adj_w = round_weight(raw_w)  # ⚠️ 保留你原本的重量處理
+                    matched = (m.group(1), adj_w, t)  # 加上原始訊息 t
                     break
             if matched:
                 found.append(matched)
@@ -604,12 +651,11 @@ elif menu == "📥 貼上入庫訊息":
             st.warning("沒解析到任何『單號＋重量』，請確認範例格式或貼更多原文。")
         else:
             st.success(f"解析到 {len(found)} 筆：")
-            st.write(found)
+            st.write([(tn, w) for (tn, w, _) in found])
 
             # 寫回資料庫
             updated, missing = 0, []
-            for tn, w in found:
-                # 依 tracking_number 更新
+            for tn, w, raw_line in found:
                 cursor.execute(
                     """
                     UPDATE orders 
@@ -622,6 +668,8 @@ elif menu == "📥 貼上入庫訊息":
                 )
                 if cursor.rowcount == 0:
                     missing.append(tn)
+                    # ⬇️ 記到 JSON 佇列，帶上已解析的重量與原始訊息
+                    enqueue_failed(tn, w, raw_line, "找不到對應訂單")
                 else:
                     updated += 1
             conn.commit()
@@ -630,25 +678,39 @@ elif menu == "📥 貼上入庫訊息":
             if missing:
                 st.info("⚠️ 下列單號在資料庫找不到，已加入重試佇列：")
                 st.write(missing)
-                for tn in missing:
-                    enqueue_failed(tn, f"{tn}｜{w}kg")  # raw_line可替換成原始 line
 
-            st.markdown("### 📨 未成功單號佇列")
-            q = _load_failed()
-            if q:
-                st.dataframe(pd.DataFrame(q), use_container_width=True, height=200)
-                c1,c2 = st.columns(2)
-                with c1:
-                    if st.button("🔁 重試全部"):
-                        ok,fail = retry_failed(conn)
-                        st.success(f"已重試，成功 {ok} 筆，仍待 {fail} 筆")
-                with c2:
-                    if st.button("🧹 清空佇列"):
-                        _save_failed([])
-                        st.warning("佇列已清空")
-            else:
-                st.caption("目前沒有待重試的單號")
+    # === 佇列檢視 / 操作 ===
+    st.markdown("### 📨 未成功單號佇列")
+    q = _load_failed()
+    if q:
+        df_q = pd.DataFrame(q)
+        # 乾淨顯示
+        cols = ["tracking_number", "weight_kg", "raw_message", "attempts", "last_error"]
+        df_q = df_q.reindex(columns=cols)
+        df_q = df_q.rename(columns={
+            "tracking_number": "單號",
+            "weight_kg": "重量(kg)",
+            "raw_message": "原始訊息",
+            "attempts": "重試次數",
+            "last_error": "最後錯誤"
+        })
+        st.dataframe(df_q, use_container_width=True, height=260)
 
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("🔁 重試全部", use_container_width=True):
+                ok, fail = retry_failed_all(conn)
+                st.success(f"已重試：成功 {ok} 筆、仍待 {fail} 筆")
+        with c2:
+            # 下載 JSON 備份
+            buf = io.BytesIO(json.dumps(q, ensure_ascii=False, indent=2).encode("utf-8"))
+            st.download_button("📥 下載佇列 JSON", buf, file_name="failed_inbound_queue.json", use_container_width=True)
+        with c3:
+            if st.button("🧹 清空佇列", use_container_width=True):
+                _save_failed([])
+                st.warning("佇列已清空。")
+    else:
+        st.caption("目前沒有待重試的單號。")
 
 
 # =====🚚 批次出貨=====
@@ -873,6 +935,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
