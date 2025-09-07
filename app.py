@@ -314,7 +314,8 @@ elif menu == "✏️ 編輯訂單":
             tracking_number   = st.text_input("包裹單號",    rec["tracking_number"])
             amount_rmb        = st.number_input("訂單金額（人民幣）", value=float(rec["amount_rmb"]))
             service_fee       = st.number_input("代購手續費（NT$）",   value=float(rec["service_fee"]))
-            weight_kg         = st.number_input("包裹公斤數",       value=float(rec["weight_kg"]))
+            weight_val = rec["weight_kg"] if rec["weight_kg"] is not None else 0.0
+            weight_kg  = st.number_input("包裹公斤數", value=float(weight_val))
             is_arrived        = st.checkbox("已到貨",               value=bool(rec["is_arrived"]))
             is_returned       = st.checkbox("已運回",               value=bool(rec["is_returned"]))
             is_early_returned = st.checkbox("提前運回",             value=bool(rec.get("is_early_returned", False)))
@@ -935,6 +936,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
