@@ -579,7 +579,7 @@ elif menu == "📦 可出貨名單":
             )
 
         with cc2:
-            if st.button("⏰ 延後運回（標記勾選客戶底下所有訂單）", disabled=len(picked_names)==0, use_container_width=True):
+            if st.button("⏰ 延後運回 ", disabled=len(picked_names)==0, use_container_width=True):
                 try:
                     ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                     if ids:
@@ -592,7 +592,7 @@ elif menu == "📦 可出貨名單":
                     st.error(f"發生錯誤：{e}")
 
         with cc3:
-            if st.button("🧹 取消延後（勾選客戶）", disabled=len(picked_names)==0, use_container_width=True):
+            if st.button("🧹 取消延後運回 ", disabled=len(picked_names)==0, use_container_width=True):
                 try:
                     ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                     if ids:
@@ -606,7 +606,7 @@ elif menu == "📦 可出貨名單":
                     
 
         with cc4:
-            if st.button("✅ 標記為已運回（勾選客戶本次清單）", disabled=len(picked_names)==0, use_container_width=True):
+            if st.button("✅ 標記為已運回 ", disabled=len(picked_names)==0, use_container_width=True):
                 try:
                     # 只更新本次清單 df_calc 中、屬於勾選客戶的訂單
                     ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
@@ -956,6 +956,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
