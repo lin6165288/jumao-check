@@ -562,7 +562,8 @@ elif menu == "📦 可出貨名單":
 
         picked_names = edited_sum.loc[edited_sum["✅ 選取"]==True, "客戶姓名"].tolist()
 
-        cc1, cc2, cc3 = st.columns(3)
+        cc1, cc2, cc3, cc4 = st.columns(4)
+
         with cc1:
             buf2 = io.BytesIO()
             out_sum = edited_sum[edited_sum["✅ 選取"]==True].drop(columns=["✅ 選取"]).copy()
@@ -602,6 +603,23 @@ elif menu == "📦 可出貨名單":
                         st.rerun()
                 except Exception as e:
                     st.error(f"發生錯誤：{e}")
+                    
+        with cc4:
+            if st.button("✅ 標記為已運回（勾選客戶的本次清單）", disabled=len(picked_names)==0, use_container_width=True):
+                try:
+                    # 只抓本次清單 df_calc 內、屬於勾選客戶的那些訂單（例如 3 筆提前運回）
+                    ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
+                    if ids:
+                        placeholders = ",".join(["%s"] * len(ids))
+                        sql = f"UPDATE orders SET is_returned = 1 WHERE order_id IN ({placeholders})"
+                       cursor.execute(sql, ids)
+                        conn.commit()
+                        st.success(f"✅ 已更新：{len(ids)} 筆訂單標記為『已運回』")
+                        st.rerun()
+                    else:
+                        st.info("本次清單中沒有可更新的訂單。")
+               except Exception as e:
+                    st.error(f"❌ 發生錯誤：{e}")
 
 
 
@@ -936,6 +954,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
