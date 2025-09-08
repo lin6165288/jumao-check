@@ -511,42 +511,68 @@ elif menu == "📦 可出貨名單":
         df_nonzero = df_calc[pd.to_numeric(df_calc["weight_kg"], errors="coerce").fillna(0) > 0].copy()
 
         # 依「客戶 × 平台」合併
+        # 依「客戶 × 平台」合併（只統計本次清單中、重量>0 的訂單用於費用計算）
         grp = (
             df_nonzero
             .groupby(["customer_name", "platform"], as_index=False)
             .agg(total_w=("weight_kg", "sum"),
-                 pkg_cnt=("order_id", "count"),
-                 any_delay=("delayed_flag", "max"))
+                 pkg_cnt=("order_id", "count"))   # 供參考，可不顯示
         )
 
         # 計價規則
         def billed_weight(w, pf):
             base = 1.0 if pf == "集運" else 0.5
             return max(base, math.ceil(float(w) / 0.5) * 0.5)
-
+        
         def unit_price(pf):
             return 75.0 if pf == "集運" else 60.0
 
-        grp["billed_w"] = grp.apply(lambda r: billed_weight(r["total_w"], r["platform"]), axis=1)
+        grp["billed_w"]     = grp.apply(lambda r: billed_weight(r["total_w"], r["platform"]), axis=1)
         grp["price_per_kg"] = grp["platform"].apply(unit_price)
-        grp["fee"] = grp["billed_w"] * grp["price_per_kg"]
+        grp["fee"]          = grp["billed_w"] * grp["price_per_kg"]
 
-        # 合併回客戶層級
-        summary = (
-            grp.groupby("customer_name", as_index=False)
-               .agg(包裹總數=("pkg_cnt", "sum"),
-                    總公斤數=("total_w", "sum"),
-                    總國際運費=("fee", "sum"),
-                    含延後=("any_delay", "max"))
+        # —— 新增：計算「本次清單」每位客戶的延後筆數 / 總筆數 —— 
+        per_customer_delay = (
+            df_calc.groupby("customer_name", as_index=False)
+                   .agg(延後數=("delayed_flag", "sum"),
+                        本次清單總筆數=("order_id", "count"))
         )
+
+        # 客戶層級的費用彙總
+        summary_fee = (
+            grp.groupby("customer_name", as_index=False)
+              .agg(包裹總數=("pkg_cnt", "sum"),
+                    總公斤數=("total_w", "sum"),
+                    總國際運費=("fee", "sum"))
+        )
+
+        # 合併「延後數/總筆數」資訊
+        summary = summary_fee.merge(per_customer_delay, on="customer_name", how="left").fillna(0)
+
+        # 產生標籤：0=無延後、全=全部延後、其他=部分延後
+        def delay_label(row):
+            d = int(row["延後數"])
+            t = int(row["本次清單總筆數"])
+            if t == 0 or d == 0:
+                return ""                          # 沒有延後
+            if d == t:
+                return f"⛔ 全部延後（{d}/{t}）"
+            return f"⚠️ 部分延後（{d}/{t}）"
+
+        summary["標記"] = summary.apply(delay_label, axis=1)
+
+        # 顯示用
         summary = summary.sort_values(["總國際運費", "總公斤數"], ascending=[False, False])
 
-        # 顯示用＋勾選
         summary_display = summary.copy()
-        summary_display.rename(columns={"customer_name":"客戶姓名"}, inplace=True)
-        summary_display["含延後"] = summary_display["含延後"].apply(lambda b: "✔" if b else "✘")
+        summary_display.rename(columns={"customer_name": "客戶姓名"}, inplace=True)
+
+        # 你原本的勾選欄位
         summary_display.insert(0, "✅ 選取", False)
-        summary_display.insert(1, "標記", summary_display["含延後"].map(lambda x: "⚠️ 含延後" if x=="✔" else ""))
+
+        # 把「標記」放在勾選後面，比較醒目
+        cols = ["✅ 選取", "標記", "客戶姓名", "包裹總數", "本次清單總筆數", "延後數", "總公斤數", "總國際運費"]
+        summary_display = summary_display[[c for c in cols if c in summary_display.columns]]
 
         edited_sum = st.data_editor(
             summary_display,
@@ -556,11 +582,12 @@ elif menu == "📦 可出貨名單":
             use_container_width=True,
             height=420,
             column_config={
-                "✅ 選取": st.column_config.CheckboxColumn("✅ 選取", help="勾選要下載/延後的客戶（會連同該客戶全部訂單）")
+                "✅ 選取": st.column_config.CheckboxColumn("✅ 選取", help="勾選要操作的客戶（只影響本次清單內的訂單）")
             }
         )
 
-        picked_names = edited_sum.loc[edited_sum["✅ 選取"]==True, "客戶姓名"].tolist()
+        picked_names = edited_sum.loc[edited_sum["✅ 選取"] == True, "客戶姓名"].tolist()
+
 
         cc1, cc2, cc3, cc4 = st.columns(4)
 
@@ -956,6 +983,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 
