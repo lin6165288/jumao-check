@@ -989,7 +989,6 @@ elif menu == "💴 快速報價":
 # "匿名回饋管理":
 elif menu == "📮 匿名回饋管理":
     st.subheader("📮 匿名回饋管理")
-    st.caption(f"讀取 DB：{DB_PATH}")
 
     # 篩選列
     c1, c2, c3 = st.columns([2,1,1])
@@ -1029,6 +1028,7 @@ elif menu == "📮 匿名回饋管理":
     if not df.empty:
         csv = df.to_csv(index=False).encode("utf-8-sig")
         st.download_button("下載 CSV", data=csv, file_name="feedbacks_export.csv", mime="text/csv")
+
 
 
 
