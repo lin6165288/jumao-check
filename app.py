@@ -993,44 +993,43 @@ elif menu == "📮 匿名回饋管理":
     # 篩選列
     c1, c2, c3 = st.columns([2,1,1])
     with c1:
-        keyword = st.text_input("關鍵字（內容／聯絡方式）")
+        keyword = st.text_input("關鍵字（內容／備註）", key="adm_kw")
     with c2:
-        status = st.selectbox("狀態", ["全部", "未處理", "已讀", "已回覆", "忽略"], index=0)
+        status = st.selectbox("狀態", ["全部","未處理","已讀","已回覆","忽略"], index=0, key="adm_status")
     with c3:
         if st.button("重新整理"):
             st.rerun()
 
-
-
     rows = read_feedbacks(keyword, status)
     df = pd.DataFrame(rows)
-    st.caption(f"共 {len(df) if not df.empty else 0} 筆")
-    st.dataframe(df if not df.empty else pd.DataFrame(columns=["id","created_at","content","contact","status","staff_note"]),
-                 use_container_width=True, hide_index=True)
+    st.caption(f"共 {0 if df.empty else len(df)} 筆")
+    st.dataframe(
+        df if not df.empty else pd.DataFrame(columns=["id","created_at","content","status","staff_note"]),
+        use_container_width=True, hide_index=True
+    )
 
     # 批次處理
     st.subheader("批次處理")
-    ids_text = st.text_input("輸入要更新的 ID（逗號分隔），例：12,15,18")
+    ids_text = st.text_input("輸入要更新的 ID（逗號分隔）例：12,15,18", key="adm_ids")
     ids = [int(x) for x in ids_text.split(",") if x.strip().isdigit()] if ids_text else []
 
     cA, cB, cC = st.columns([1,1,2])
     with cA:
-        new_status = st.selectbox("將狀態設為", ["已讀", "已回覆", "忽略"])
+        new_status = st.selectbox("將狀態設為", ["已讀","已回覆","忽略"], key="adm_new_status")
     with cC:
-        note = st.text_input("備註（選填，會覆蓋同欄位）")
+        note = st.text_input("備註（選填，會覆蓋同欄位）", key="adm_note")
     with cB:
-        if st.button("套用狀態") and ids:
-            update_status(ids, new_status, note or None)
-            st.success("已更新")
-            st.experimental_rerun()
-
-    # 匯出 CSV
-    if not df.empty:
-        csv = df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("下載 CSV", data=csv, file_name="feedbacks_export.csv", mime="text/csv")
-
-
-
+        if st.button("套用狀態"):
+            if not ids:
+                st.warning("請先輸入要更新的 ID")
+            else:
+                try:
+                    update_status(ids, new_status, note or None)
+                    st.success("已更新")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"更新失敗：{e}")
+    
 
 
 
