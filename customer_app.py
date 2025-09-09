@@ -5,7 +5,9 @@ from mysql.connector import Error
 import time, random, hashlib
 
 # SQLite 側車檔：匿名回饋儲存
-from feedback_store import init_db, insert_feedback, DB_PATH
+from feedback_store import init_db, insert_feedback
+init_db()
+
 
 # ===== 基本設定 =====
 st.set_page_config(page_title=" 橘貓代購｜訂單查詢 & 回饋", page_icon="🧡", layout="centered")
@@ -175,6 +177,7 @@ A：以【包裹實重】為準；若多件包裹會合併計算。實際費用�
 **Q8：可以合併多件一起運回嗎？**  
 A：可以，我們會在同一批次盡量合併；如需分批或加急請先告知橘貓。
 """)
+
 
 
 
