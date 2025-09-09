@@ -997,7 +997,8 @@ elif menu == "📮 匿名回饋管理":
     with c2:
         status = st.selectbox("狀態", ["全部", "未處理", "已讀", "已回覆", "忽略"], index=0)
     with c3:
-        st.button("重新整理", on_click=lambda: st.experimental_rerun())
+        st.button("重新整理", on_click=st.rerun)
+
 
     rows = read_feedbacks(keyword, status)
     df = pd.DataFrame(rows)
@@ -1025,6 +1026,7 @@ elif menu == "📮 匿名回饋管理":
     if not df.empty:
         csv = df.to_csv(index=False).encode("utf-8-sig")
         st.download_button("下載 CSV", data=csv, file_name="feedbacks_export.csv", mime="text/csv")
+
 
 
 
