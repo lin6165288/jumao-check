@@ -1,10 +1,10 @@
-# feedback_store.py —— 簡化版（無 user_agent）
+# feedback_store.py —— 簡化版（只存 content）
 import mysql.connector
 from mysql.connector import Error
 from contextlib import contextmanager
 import streamlit as st
 
-# 共用 MySQL 連線設定
+# 共用 MySQL 連線設定（沿用你現有的 st.secrets["mysql"]）
 db_cfg = st.secrets["mysql"]
 
 @contextmanager
@@ -38,7 +38,7 @@ def init_db():
             cur.execute(sql)
 
 def insert_feedback(content: str, contact: str | None = None, user_agent: str | None = None, session_hash: str | None = None):
-    """為了相容前台呼叫簽名，保留多餘參數，但實際只存 content"""
+    """為了相容舊呼叫簽名，保留多餘參數，但實際只存 content。回傳 row id。"""
     with _conn() as con:
         with con.cursor() as cur:
             cur.execute("INSERT INTO feedbacks (content) VALUES (%s)", (content,))
