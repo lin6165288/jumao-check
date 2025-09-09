@@ -10,7 +10,7 @@ import json, os
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from feedback_store import init_db, read_feedbacks, update_status, DB_PATH
 
-
+init_db()
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
 
@@ -990,7 +990,7 @@ elif menu == "💴 快速報價":
 elif menu == "📮 匿名回饋管理":
     st.subheader("📮 匿名回饋管理")
     st.caption(f"讀取 DB：{DB_PATH}")
-    init_db()
+
     # 篩選列
     c1, c2, c3 = st.columns([2,1,1])
     with c1:
@@ -1029,6 +1029,7 @@ elif menu == "📮 匿名回饋管理":
     if not df.empty:
         csv = df.to_csv(index=False).encode("utf-8-sig")
         st.download_button("下載 CSV", data=csv, file_name="feedbacks_export.csv", mime="text/csv")
+
 
 
 
