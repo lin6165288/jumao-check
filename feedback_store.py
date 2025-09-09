@@ -31,11 +31,13 @@ def init_db():
 
 def insert_feedback(content: str, contact: str | None, user_agent: str | None, session_hash: str | None):
     with closing(_conn()) as con:
-        con.execute(
+        cur = con.execute(
             "INSERT INTO feedbacks (content, contact, user_agent, session_hash) VALUES (?,?,?,?)",
             (content, contact, user_agent, session_hash)
         )
         con.commit()
+        return cur.lastrowid  # 新增：回傳 row id，前台可顯示或除錯
+
 
 def read_feedbacks(keyword: str = "", status: str = "全部"):
     sql = "SELECT id, created_at, content, contact, status, staff_note FROM feedbacks"
