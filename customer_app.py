@@ -115,12 +115,15 @@ def page_feedback():
         if not content.strip():
             st.error("請先填寫回饋內容。")
         else:
-            ua = st.session_state.get("user_agent", "unknown")
-            # session_hash 不需要 → 傳 None
-            insert_feedback(content.strip(), None, str(ua)[:200], None)
-            st.success("已收到，謝謝你的回饋！🧡")
-            st.toast("感謝你的回饋！", icon="😺")
-            st.rerun()
+            try:
+                ua = st.session_state.get("user_agent", "unknown")
+                insert_feedback(content.strip(), None, str(ua)[:200], None)
+                st.success("已收到，謝謝你的回饋！🧡")
+                st.toast("感謝你的回饋！", icon="😺")
+                st.rerun()
+            except Exception as e:
+                st.error(f"寫入失敗：{e}")
+
 
 
 
@@ -159,6 +162,7 @@ A：以【包裹實重】為準；若多件包裹會合併計算。實際費用�
 **Q8：可以合併多件一起運回嗎？**  
 A：可以，我們會在同一批次盡量合併；如需分批或加急請先告知橘貓。
 """)
+
 
 
 
