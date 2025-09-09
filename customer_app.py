@@ -102,31 +102,42 @@ def page_orders():
 def page_feedback():
     st.title("📮 匿名回饋 ")
 
-    # 提示文（你可以挑你喜歡的那句）
+    # 美化提示
     st.info("💡 **若有任何建議，或期待我們推出的新功能，歡迎在此留言** 🧡\n您的聲音將幫助橘貓代購越來越好！", icon="😺")
 
-    # 單一文字輸入（保留唯一 key）
+    # ===== 1) 先處理「上一輪」留下的旗標（顯示成功訊息、清空內容）=====
+    # 顯示上一次送出後要顯示的訊息
+    flash_msg = st.session_state.pop("fb_flash", None)
+    if flash_msg:
+        st.success(flash_msg)
+
+    # 清空輸入內容（要在建立 widget 之前做）
+    if st.session_state.pop("fb_clear", False):
+        # 用 pop 把 key 移除，讓下一個 text_area 以預設值重新建立
+        st.session_state.pop("fb_content", None)
+
+    # ===== 2) 渲染輸入元件 =====
     content = st.text_area("寫下你想對橘貓說的話（匿名）", height=200, key="fb_content")
 
-    # 送出按鈕（不要用 rerun）
+    # ===== 3) 送出 =====
     if st.button("送出回饋", type="primary", key="fb_submit_btn"):
         if not content.strip():
             st.error("請先填寫回饋內容。")
         else:
             try:
                 ua = st.session_state.get("user_agent", "unknown")
-                # session_hash 不需要 → 傳 None
-                row_id = insert_feedback(content.strip(), None, str(ua)[:200], None)  # 讓 insert 回傳 row id（見下方）
-                st.success("已收到，謝謝你的回饋！🧡")
-                st.toast("感謝你的回饋！", icon="😺")
-                # 清空輸入框內容，但不要 rerun，這樣訊息會留在畫面上
-                st.session_state["fb_content"] = ""
-                # （除錯用：想確認寫入哪個 DB，可暫時打開）
-                # from feedback_store import DB_PATH
-                # st.caption(f"已寫入 ID={row_id} → {DB_PATH}")
+                # session_hash 不需要，傳 None
+                from feedback_store import insert_feedback  # 保險起見，若你已在檔頭 import 可移除此行
+                insert_feedback(content.strip(), None, str(ua)[:200], None)
+
+                # 設定「下一輪」要做的事：顯示成功訊息 + 清空輸入
+                st.session_state["fb_flash"] = "已收到，謝謝你的回饋！🧡"
+                st.session_state["fb_clear"] = True
+
+                # 重新執行一次，讓上面旗標生效（不會出現黃色警告，因為不在 callback 內再 rerun）
+                st.rerun()
             except Exception as e:
                 st.error(f"寫入失敗：{e}")
-
 
 
 # ===== 導覽（同一連結切換）=====
@@ -164,6 +175,7 @@ A：以【包裹實重】為準；若多件包裹會合併計算。實際費用�
 **Q8：可以合併多件一起運回嗎？**  
 A：可以，我們會在同一批次盡量合併；如需分批或加急請先告知橘貓。
 """)
+
 
 
 
