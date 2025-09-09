@@ -181,7 +181,7 @@ st.title("🐾 橘貓代購｜訂單管理系統")
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
-    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息", "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價"
+    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息", "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價", "📮 匿名回饋管理"
 ])
 
 # ===== 功能實作 =====
@@ -1024,6 +1024,7 @@ elif menu == "📮 匿名回饋管理":
     if not df.empty:
         csv = df.to_csv(index=False).encode("utf-8-sig")
         st.download_button("下載 CSV", data=csv, file_name="feedbacks_export.csv", mime="text/csv")
+
 
 
 
