@@ -2,22 +2,17 @@ import streamlit as st
 import pandas as pd
 import mysql.connector
 from mysql.connector import Error
-import time, random, hashlib
 
-# SQLite 側車檔：匿名回饋儲存
+# 🔸 匿名回饋（MySQL 小表）
 from feedback_store import init_db, insert_feedback
+
+st.set_page_config(page_title="🧡 橘貓代購｜訂單查詢 & 匿名回饋", page_icon="🧡", layout="centered")
+
+# 初始化回饋表（不存在就建立）
 init_db()
 
-
-# ===== 基本設定 =====
-st.set_page_config(page_title=" 橘貓代購｜訂單查詢 & 回饋", page_icon="🧡", layout="centered")
-
-# 初始化側車 DB（第一次會自動建表）
-init_db()
-
-# ===== MySQL 連線（維持你原本的查單資料來源）=====
+# ===== 你的 MySQL（訂單）連線 =====
 db_cfg = st.secrets["mysql"]
-
 def get_connection():
     return mysql.connector.connect(
         host=db_cfg["host"],
@@ -26,14 +21,11 @@ def get_connection():
         database=db_cfg["database"],
     )
 
-# ===== 查單頁 =====
+# ===== 訂單查詢頁 =====
 def page_orders():
     st.title("🧡 橘貓代購｜訂單查詢系統")
 
-    # ▶ 加唯一 key，避免與其他頁面重複
     name = st.text_input("請輸入登記包裹用名稱(默認LINE名稱)", key="q_name")
-
-    # ✅ 單一濾器：只看未完成（＝未運回）
     only_incomplete = st.checkbox("只看未完成訂單（未運回）", value=False, key="q_only_incomplete")
 
     if st.button("🔎 查詢", key="q_search_btn"):
@@ -43,17 +35,12 @@ def page_orders():
             try:
                 conn = get_connection()
 
-                # 精準姓名、大小寫不敏感
                 wheres = ["LOWER(TRIM(customer_name)) = LOWER(%s)"]
                 params = [name.strip()]
-
-                # 只看未完成＝未運回（is_returned=0 or NULL）
                 if only_incomplete:
                     wheres.append("(is_returned = 0 OR is_returned IS NULL)")
-
                 where_sql = " WHERE " + " AND ".join(wheres)
 
-                # 主查詢
                 sql = f"""
                     SELECT
                       order_id        AS 訂單編號,
@@ -70,7 +57,6 @@ def page_orders():
                 """
                 df = pd.read_sql(sql, conn, params=params)
 
-                # 「已到貨且未運回」統計（固定口徑，不受上方勾選影響）
                 stat_sql = """
                     SELECT
                       COUNT(*) AS cnt,
@@ -83,13 +69,11 @@ def page_orders():
                 stat = pd.read_sql(stat_sql, conn, params=[name.strip()]).iloc[0]
                 conn.close()
 
-                # 統計卡片
                 st.subheader("📦 已到倉包裹總計")
                 m1, m2 = st.columns(2)
                 m1.metric("包裹數量", int(stat["cnt"]))
                 m2.metric("重量總重（kg）", f"{float(stat['total_weight']):.2f}")
 
-                # 結果表格
                 if df.empty:
                     st.info("查無符合條件的訂單。")
                 else:
@@ -100,49 +84,34 @@ def page_orders():
             except Error as e:
                 st.error(f"資料庫錯誤：{e}")
 
-# ===== 匿名回饋頁（SQLite 側車檔，不動 MySQL 結構）=====
+# ===== 匿名回饋頁（無聯絡方式/驗證/頻率限制）=====
 def page_feedback():
     st.title("📮 匿名回饋 ")
 
-    # 美化提示
-    st.info("💡 **若有任何建議，或期待我們推出的新功能，歡迎在此留言** 🧡\n您的聲音將幫助橘貓代購越來越好！", icon="😺")
+    st.info(" **有任何想法、建議，或希望看到的新功能嗎？** \n🧡 請放心留下訊息，我們都會認真參考！", icon="😺")
 
-    # ===== 1) 先處理「上一輪」留下的旗標（顯示成功訊息、清空內容）=====
-    # 顯示上一次送出後要顯示的訊息
+    # --- 先處理上一輪的旗標（讓成功提示與清空在 rerun 後發生）---
     flash_msg = st.session_state.pop("fb_flash", None)
     if flash_msg:
         st.success(flash_msg)
-
-    # 清空輸入內容（要在建立 widget 之前做）
     if st.session_state.pop("fb_clear", False):
-        # 用 pop 把 key 移除，讓下一個 text_area 以預設值重新建立
         st.session_state.pop("fb_content", None)
 
-    # ===== 2) 渲染輸入元件 =====
     content = st.text_area("寫下你想對橘貓說的話（匿名）", height=200, key="fb_content")
 
-    # ===== 3) 送出 =====
     if st.button("送出回饋", type="primary", key="fb_submit_btn"):
         if not content.strip():
             st.error("請先填寫回饋內容。")
         else:
             try:
-                ua = st.session_state.get("user_agent", "unknown")
-                # session_hash 不需要，傳 None
-                from feedback_store import insert_feedback  # 保險起見，若你已在檔頭 import 可移除此行
-                insert_feedback(content.strip(), None, str(ua)[:200], None)
-
-                # 設定「下一輪」要做的事：顯示成功訊息 + 清空輸入
+                insert_feedback(content.strip())  # 多餘參數可省略
                 st.session_state["fb_flash"] = "已收到，謝謝你的回饋！🧡"
                 st.session_state["fb_clear"] = True
-
-                # 重新執行一次，讓上面旗標生效（不會出現黃色警告，因為不在 callback 內再 rerun）
                 st.rerun()
             except Exception as e:
                 st.error(f"寫入失敗：{e}")
 
-
-# ===== 導覽（同一連結切換）=====
+# ===== 導覽 =====
 page = st.sidebar.radio("功能選單", ["🔎 訂單查詢", "📮 匿名回饋"], index=0, key="nav_radio")
 page_orders() if page == "🔎 訂單查詢" else page_feedback()
 
@@ -177,13 +146,3 @@ A：以【包裹實重】為準；若多件包裹會合併計算。實際費用�
 **Q8：可以合併多件一起運回嗎？**  
 A：可以，我們會在同一批次盡量合併；如需分批或加急請先告知橘貓。
 """)
-
-
-
-
-
-
-
-
-
-
