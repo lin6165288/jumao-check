@@ -8,6 +8,7 @@ import re
 import math
 import json, os
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+from feedback_store import init_db, read_feedbacks, update_status
 
 
 
@@ -985,6 +986,44 @@ elif menu == "💴 快速報價":
         components.html(html_block, height=60)
 
 
+# 3. 編輯訂單
+elif menu == "📮 匿名回饋管理":
+    st.subheader("📮 匿名回饋管理")
+    # 篩選列
+    c1, c2, c3 = st.columns([2,1,1])
+    with c1:
+        keyword = st.text_input("關鍵字（內容／聯絡方式）")
+    with c2:
+        status = st.selectbox("狀態", ["全部", "未處理", "已讀", "已回覆", "忽略"], index=0)
+    with c3:
+        st.button("重新整理", on_click=lambda: st.experimental_rerun())
+
+    rows = read_feedbacks(keyword, status)
+    df = pd.DataFrame(rows)
+    st.caption(f"共 {len(df) if not df.empty else 0} 筆")
+    st.dataframe(df if not df.empty else pd.DataFrame(columns=["id","created_at","content","contact","status","staff_note"]),
+                 use_container_width=True, hide_index=True)
+
+    # 批次處理
+    st.subheader("批次處理")
+    ids_text = st.text_input("輸入要更新的 ID（逗號分隔），例：12,15,18")
+    ids = [int(x) for x in ids_text.split(",") if x.strip().isdigit()] if ids_text else []
+
+    cA, cB, cC = st.columns([1,1,2])
+    with cA:
+        new_status = st.selectbox("將狀態設為", ["已讀", "已回覆", "忽略"])
+    with cC:
+        note = st.text_input("備註（選填，會覆蓋同欄位）")
+    with cB:
+        if st.button("套用狀態") and ids:
+            update_status(ids, new_status, note or None)
+            st.success("已更新")
+            st.experimental_rerun()
+
+    # 匯出 CSV
+    if not df.empty:
+        csv = df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("下載 CSV", data=csv, file_name="feedbacks_export.csv", mime="text/csv")
 
 
 
