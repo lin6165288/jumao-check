@@ -101,41 +101,25 @@ def page_orders():
 # ===== 匿名回饋頁（SQLite 側車檔，不動 MySQL 結構）=====
 def page_feedback():
     st.title("📮 匿名回饋 ")
-    st.info(
-        "匿名聲明：不要求登入、不主動蒐集 IP。為防洗版，僅在本機建立一次性雜湊碼做頻率限制（不可逆）。",
-        icon="🕊️",
-    )
 
-    # 每裝置/分頁限流與雜湊碼
-    if "fb_session_hash" not in st.session_state:
-        raw = f"{time.time()}-{random.random()}"
-        st.session_state.fb_session_hash = hashlib.sha256(raw.encode()).hexdigest()
-    if "fb_last_ts" not in st.session_state:
-        st.session_state.fb_last_ts = 0.0
+    # 簡短說明（已移除雜湊／頻率限制的描述）
+    st.info("✨ **有任何想法、建議，或希望看到的新功能嗎？** \n🧡 請放心留下訊息，我們都會認真參考！", icon="🕊️")
 
-    # 驗證題固定在 session，避免重繪時數字改變
-    if "fb_a" not in st.session_state or "fb_b" not in st.session_state:
-        st.session_state.fb_a, st.session_state.fb_b = random.randint(1, 9), random.randint(1, 9)
-    a, b = st.session_state.fb_a, st.session_state.fb_b
-
-    # ▶ 全部 widget 都加唯一 key，避免與查單頁衝突
+    # 單一文字輸入（保留唯一 key 避免與其他頁元件衝突）
     content = st.text_area("寫下你想對橘貓說的話（匿名）", height=200, key="fb_content")
 
-    COOLDOWN = 60
-    can_submit = (time.time() - st.session_state.fb_last_ts) > COOLDOWN
-    if st.button("送出回饋", type="primary", disabled=not can_submit, key="fb_submit_btn"):
+    # 送出按鈕（不做冷卻、不做驗證）
+    if st.button("送出回饋", type="primary", key="fb_submit_btn"):
         if not content.strip():
             st.error("請先填寫回饋內容。")
         else:
             ua = st.session_state.get("user_agent", "unknown")
-            insert_feedback(content.strip(), None, str(ua)[:200], st.session_state.fb_session_hash)
-            st.session_state.fb_last_ts = time.time()
+            # session_hash 不需要 → 傳 None
+            insert_feedback(content.strip(), None, str(ua)[:200], None)
             st.success("已收到，謝謝你的回饋！🧡")
             st.toast("感謝你的回饋！", icon="😺")
             st.experimental_rerun()
 
-
-        st.caption(f"防洗版：每 {COOLDOWN} 秒可提交一次。請勿張貼個資或廣告。")
 
 # ===== 導覽（同一連結切換）=====
 page = st.sidebar.radio("功能選單", ["🔎 訂單查詢", "📮 匿名回饋"], index=0, key="nav_radio")
@@ -172,4 +156,5 @@ A：以【包裹實重】為準；若多件包裹會合併計算。實際費用�
 **Q8：可以合併多件一起運回嗎？**  
 A：可以，我們會在同一批次盡量合併；如需分批或加急請先告知橘貓。
 """)
+
 
