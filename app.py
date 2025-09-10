@@ -17,13 +17,15 @@ init_db()
 QUEUE_FILE = "failed_inbound_queue.json"
 
 def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last_error=None):
+    # 確保表存在（可留你原本的 ensure_* 寫法）
     ensure_failed_orders_table(conn)
     sql = """
     INSERT INTO failed_orders (tracking_number, weight_kg, raw_message, retry_count, last_error)
     VALUES (%s, %s, %s, 1, %s)
     ON DUPLICATE KEY UPDATE
-      weight_kg = VALUES(weight_kg),
-      raw_message = VALUES(raw_message),
+      -- 只有當提供新值時才覆蓋，否則保留舊值
+      weight_kg = IFNULL(VALUES(weight_kg), weight_kg),
+      raw_message = IFNULL(VALUES(raw_message), raw_message),
       last_error = VALUES(last_error),
       retry_count = retry_count + 1,
       updated_at = CURRENT_TIMESTAMP
@@ -31,6 +33,7 @@ def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last
     with conn.cursor() as cur:
         cur.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
     conn.commit()
+
 
 
 def ensure_failed_orders_table(conn):
@@ -1037,6 +1040,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
