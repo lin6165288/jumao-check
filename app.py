@@ -16,23 +16,36 @@ init_db()
 
 QUEUE_FILE = "failed_inbound_queue.json"
 
-def _load_failed():
-    if os.path.exists(QUEUE_FILE):
-        try:
-            with open(QUEUE_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                # 容錯：非 list 時重設
-                return data if isinstance(data, list) else []
-        except Exception:
-            return []
-    return []
+def enqueue_failed(tracking_number, weight_kg=None, raw_message=None, last_error=None):
+    sql = """
+    INSERT INTO failed_orders (tracking_number, weight_kg, raw_message, retry_count, last_error)
+    VALUES (%s, %s, %s, 1, %s)
+    ON DUPLICATE KEY UPDATE
+      weight_kg = VALUES(weight_kg),
+      raw_message = VALUES(raw_message),
+      last_error = VALUES(last_error),
+      retry_count = retry_count + 1,
+      updated_at = CURRENT_TIMESTAMP
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
+    conn.commit()
 
-def _save_failed(items: list):
-    try:
-        with open(QUEUE_FILE, "w", encoding="utf-8") as f:
-            json.dump(items, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"無法寫入佇列：{e}")
+
+def load_failed():
+    sql = """
+    SELECT tracking_number, weight_kg, raw_message, retry_count, last_error
+    FROM failed_orders
+    ORDER BY updated_at DESC
+    """
+    return pd.read_sql(sql, conn)
+
+
+def clear_failed():
+    with conn.cursor() as cursor:
+        cursor.execute("TRUNCATE TABLE failed_orders")
+    conn.commit()
+
 
 def enqueue_failed(tracking_number: str, weight_kg: float, raw_message: str, err_msg: str = "找不到對應訂單"):
     """記錄找不到的單號（去重：以 單號+重量+原文 當 signature）"""
@@ -50,48 +63,37 @@ def enqueue_failed(tracking_number: str, weight_kg: float, raw_message: str, err
         _save_failed(q)
 
 def retry_failed_all(conn):
-    """重試佇列：成功就移除，仍失敗則 attempts+1 並更新 last_error"""
-    q = _load_failed()
-    if not q:
-        return (0, 0)
-
-    new_q = []
-    ok, fail = 0, 0
-    for it in q:
-        tn  = it.get("tracking_number") or ""
-        w   = it.get("weight_kg")
-        raw = it.get("raw_message", "")
+    df = load_failed()
+    success, fail = 0, 0
+    for _, row in df.iterrows():
+        tn, w, raw_msg = row["tracking_number"], row["weight_kg"], row["raw_message"]
         try:
-            df_o = pd.read_sql(
-                "SELECT order_id FROM orders WHERE tracking_number=%s",
-                conn, params=[tn]
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE orders 
+                SET is_arrived = 1,
+                    weight_kg = %s,
+                    remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫', NOW())
+                WHERE tracking_number = %s
+                """,
+                (w, tn)
             )
-            if df_o.empty:
-                raise Exception("仍查無此單")
-
-            order_id = int(df_o.iloc[0]["order_id"])
-
-            # ✅ 與你原本成功更新邏輯一致：is_arrived=1, weight_kg=解析後重量, 備註加「自動入庫」
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE orders
-                    SET is_arrived = 1,
-                        weight_kg  = %s,
-                        remarks    = CONCAT(COALESCE(remarks,''), '｜自動入庫', NOW())
-                    WHERE order_id = %s
-                """, (w, order_id))
+            if cursor.rowcount > 0:
                 conn.commit()
-            ok += 1
-
+                # 成功 → 從佇列移除
+                with conn.cursor() as c2:
+                    c2.execute("DELETE FROM failed_orders WHERE tracking_number=%s", (tn,))
+                conn.commit()
+                success += 1
+            else:
+                # 還是找不到，更新錯誤訊息
+                enqueue_failed(tn, w, raw_msg, "找不到對應訂單")
+                fail += 1
         except Exception as e:
-            it["attempts"]   = int(it.get("attempts", 0)) + 1
-            it["last_error"] = str(e)[:250]
-            new_q.append(it)
+            enqueue_failed(tn, w, raw_msg, str(e))
             fail += 1
-
-    _save_failed(new_q)
-    return (ok, fail)
-
+    return success, fail
 
 # ===
 DELAY_TAG = "[延後]"
@@ -730,9 +732,17 @@ elif menu == "📥 貼上入庫訊息":
 
     # === 佇列檢視 / 操作 ===
     st.markdown("### 📨 未成功單號佇列")
-    q = _load_failed()
-    if q:
-        df_q = pd.DataFrame(q)
+    df_q = load_failed()
+    if not df_q.empty:
+        df_q = df_q.rename(columns={
+            "tracking_number": "單號",
+            "weight_kg": "重量(kg)",
+            "raw_message": "原始訊息",
+            "retry_count": "重試次數",
+            "last_error": "最後錯誤"
+        })
+        st.dataframe(df_q, use_container_width=True, height=260)
+
         # 乾淨顯示
         cols = ["tracking_number", "weight_kg", "raw_message", "attempts", "last_error"]
         df_q = df_q.reindex(columns=cols)
@@ -1030,6 +1040,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
