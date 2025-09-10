@@ -731,7 +731,7 @@ elif menu == "📥 貼上入庫訊息":
                 if cursor.rowcount == 0:
                     missing.append(tn)
                     # ⬇️ 記到 JSON 佇列，帶上已解析的重量與原始訊息
-                    enqueue_failed(tn, w, raw_line, "找不到對應訂單")
+                    enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
                 else:
                     updated += 1
             conn.commit()
@@ -1037,6 +1037,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
