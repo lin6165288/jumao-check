@@ -16,7 +16,8 @@ init_db()
 
 QUEUE_FILE = "failed_inbound_queue.json"
 
-def enqueue_failed(tracking_number, weight_kg=None, raw_message=None, last_error=None):
+def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last_error=None):
+    ensure_failed_orders_table(conn)
     sql = """
     INSERT INTO failed_orders (tracking_number, weight_kg, raw_message, retry_count, last_error)
     VALUES (%s, %s, %s, 1, %s)
@@ -27,71 +28,80 @@ def enqueue_failed(tracking_number, weight_kg=None, raw_message=None, last_error
       retry_count = retry_count + 1,
       updated_at = CURRENT_TIMESTAMP
     """
-    with conn.cursor() as cursor:
-        cursor.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
+    with conn.cursor() as cur:
+        cur.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
     conn.commit()
 
 
-def load_failed():
-    sql = """
-    SELECT tracking_number, weight_kg, raw_message, retry_count, last_error
-    FROM failed_orders
-    ORDER BY updated_at DESC
+def ensure_failed_orders_table(conn):
+    ddl = """
+    CREATE TABLE IF NOT EXISTS failed_orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      tracking_number VARCHAR(64) NOT NULL,
+      weight_kg DECIMAL(10,3) NULL,
+      raw_message TEXT NULL,
+      retry_count INT NOT NULL DEFAULT 0,
+      last_error VARCHAR(255) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_tracking (tracking_number)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
     """
-    return pd.read_sql(sql, conn)
-
-
-def clear_failed():
-    with conn.cursor() as cursor:
-        cursor.execute("TRUNCATE TABLE failed_orders")
+    with conn.cursor() as cur:
+        cur.execute(ddl)
     conn.commit()
 
+def load_failed(conn):
+    try:
+        ensure_failed_orders_table(conn)
+        with conn.cursor(dictionary=True) as cur:
+            cur.execute("""
+                SELECT tracking_number, weight_kg, raw_message, retry_count, last_error
+                FROM failed_orders
+                ORDER BY updated_at DESC
+            """)
+            rows = cur.fetchall()
+        return pd.DataFrame(rows)
+    except Exception as e:
+        st.error(f"讀取 failed_orders 發生錯誤：{e}")
+        return pd.DataFrame(columns=["tracking_number","weight_kg","raw_message","retry_count","last_error"])
 
-def enqueue_failed(tracking_number: str, weight_kg: float, raw_message: str, err_msg: str = "找不到對應訂單"):
-    """記錄找不到的單號（去重：以 單號+重量+原文 當 signature）"""
-    q = _load_failed()
-    signature = f"{tracking_number}|{weight_kg}|{raw_message}"
-    if not any(it.get("signature") == signature for it in q):
-        q.append({
-            "signature": signature,
-            "tracking_number": tracking_number or "UNKNOWN",
-            "weight_kg": float(weight_kg) if weight_kg is not None else None,
-            "raw_message": raw_message or "",
-            "attempts": 0,
-            "last_error": err_msg or ""
-        })
-        _save_failed(q)
+
+def clear_failed(conn):
+    ensure_failed_orders_table(conn)
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE TABLE failed_orders")
+    conn.commit()
+
 
 def retry_failed_all(conn):
-    df = load_failed()
-    success, fail = 0, 0
+    df = load_failed(conn)
+    success = fail = 0
     for _, row in df.iterrows():
         tn, w, raw_msg = row["tracking_number"], row["weight_kg"], row["raw_message"]
         try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                UPDATE orders 
-                SET is_arrived = 1,
-                    weight_kg = %s,
-                    remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫', NOW())
-                WHERE tracking_number = %s
-                """,
-                (w, tn)
-            )
-            if cursor.rowcount > 0:
-                conn.commit()
-                # 成功 → 從佇列移除
-                with conn.cursor() as c2:
-                    c2.execute("DELETE FROM failed_orders WHERE tracking_number=%s", (tn,))
-                conn.commit()
-                success += 1
-            else:
-                # 還是找不到，更新錯誤訊息
-                enqueue_failed(tn, w, raw_msg, "找不到對應訂單")
-                fail += 1
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE orders 
+                    SET is_arrived = 1,
+                        weight_kg = %s,
+                        remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫', NOW())
+                    WHERE tracking_number = %s
+                    """,
+                    (w, tn)
+                )
+                if cur.rowcount > 0:
+                    conn.commit()
+                    with conn.cursor() as c2:
+                        c2.execute("DELETE FROM failed_orders WHERE tracking_number=%s", (tn,))
+                    conn.commit()
+                    success += 1
+                else:
+                    enqueue_failed(conn, tn, w, raw_msg, "找不到對應訂單")
+                    fail += 1
         except Exception as e:
-            enqueue_failed(tn, w, raw_msg, str(e))
+            enqueue_failed(conn, tn, w, raw_msg, str(e))
             fail += 1
     return success, fail
 
@@ -676,10 +686,11 @@ elif menu == "📥 貼上入庫訊息":
     # 進頁可選自動重試
     auto_retry = st.toggle("進入此頁時自動重試佇列", value=True)
     if auto_retry:
+        ensure_failed_orders_table(conn)
         ok, fail = retry_failed_all(conn)
         if ok or fail:
             st.caption(f"🔁 自動重試：成功 {ok} 筆、仍待 {fail} 筆")
-
+            
     if st.button("🔎 解析並更新"):
         found = []
         lines = raw.splitlines()
@@ -732,7 +743,7 @@ elif menu == "📥 貼上入庫訊息":
 
     # === 佇列檢視 / 操作 ===
     st.markdown("### 📨 未成功單號佇列")
-    df_q = load_failed()
+    df_q = load_failed(conn)
     if not df_q.empty:
         df_q = df_q.rename(columns={
             "tracking_number": "單號",
@@ -743,31 +754,17 @@ elif menu == "📥 貼上入庫訊息":
         })
         st.dataframe(df_q, use_container_width=True, height=260)
 
-        # 乾淨顯示
-        cols = ["tracking_number", "weight_kg", "raw_message", "attempts", "last_error"]
-        df_q = df_q.reindex(columns=cols)
-        df_q = df_q.rename(columns={
-            "tracking_number": "單號",
-            "weight_kg": "重量(kg)",
-            "raw_message": "原始訊息",
-            "attempts": "重試次數",
-            "last_error": "最後錯誤"
-        })
-        st.dataframe(df_q, use_container_width=True, height=260)
-
         c1, c2, c3 = st.columns(3)
         with c1:
             if st.button("🔁 重試全部", use_container_width=True):
                 ok, fail = retry_failed_all(conn)
                 st.success(f"已重試：成功 {ok} 筆、仍待 {fail} 筆")
-        with c2:
-            # 下載 JSON 備份
-            buf = io.BytesIO(json.dumps(q, ensure_ascii=False, indent=2).encode("utf-8"))
-            st.download_button("📥 下載佇列 JSON", buf, file_name="failed_inbound_queue.json", use_container_width=True)
+                st.rerun()
         with c3:
             if st.button("🧹 清空佇列", use_container_width=True):
-                _save_failed([])
+                clear_failed(conn)
                 st.warning("佇列已清空。")
+                st.rerun()
     else:
         st.caption("目前沒有待重試的單號。")
 
@@ -1040,6 +1037,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
