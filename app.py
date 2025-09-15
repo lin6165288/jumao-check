@@ -949,7 +949,15 @@ elif menu == "💴 快速報價":
         st.success(f"【報價單】\n商品價格：{rmb} RMB\n換算台幣價格：NT$ {total_ntd:,}")
 
         # ===== 一鍵複製：報價文字（自動帶入） =====
-        
+
+        # 折扣顯示文字（只負責顯示，不影響前面計算）
+        discount_label_map = {"一般": "原價", "VIP1": "9 折", "VIP2": "85 折", "VIP3": "8 折"}
+        discount_text = discount_label_map.get(vip_level, "原價")
+
+        # 顯示用字串
+        price_rmb = f"{rmb:.1f}".rstrip("0").rstrip(".")   # 150 -> "150", 150.0 -> "150"
+        price_twd = f"{total_ntd:,}"                       # 12345 -> "12,345"
+
         quote_text = f"""【報價單】
         VIP 等級：{vip_level}（手續費 {discount_text}）
         商品價格：{price_rmb} RMB 
@@ -957,9 +965,8 @@ elif menu == "💴 快速報價":
         沒問題的話跟我說一聲～
         傳給您付款資訊😽"""
 
-
         # 預覽（方便手動複製）
-        st.text_area("要複製的內容（預覽）", value=quote_text, height=120)
+        st.text_area("要複製的內容（預覽）", value=quote_text, height=160)
 
         # —— 高相容一鍵複製（不使用 navigator.clipboard；不使用 f-string/.format）——
         import html as ihtml
@@ -994,6 +1001,7 @@ elif menu == "💴 快速報價":
             '''
         )
         components.html(html_block, height=60)
+
 
 
 # "匿名回饋管理":
@@ -1040,6 +1048,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
