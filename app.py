@@ -959,11 +959,11 @@ elif menu == "💴 快速報價":
         price_twd = f"{total_ntd:,}"                       # 12345 -> "12,345"
 
         quote_text = f"""【報價單】
-        VIP 等級：{vip_level}（手續費 {discount_text}）
-        商品價格：{price_rmb} RMB 
-        換算台幣價格：{price_twd} 台幣 
-        沒問題的話跟我說一聲～
-        傳給您付款資訊😽"""
+    VIP 等級：{vip_level}（手續費 {discount_text}）
+    商品價格：{price_rmb} RMB 
+    換算台幣價格：{price_twd} 台幣 
+    沒問題的話跟我說一聲～
+    傳給您付款資訊😽"""
 
         # 預覽（方便手動複製）
         st.text_area("要複製的內容（預覽）", value=quote_text, height=160)
