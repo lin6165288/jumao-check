@@ -950,13 +950,13 @@ elif menu == "💴 快速報價":
 
         # ===== 一鍵複製：報價文字（自動帶入） =====
         
-        quote_text = (
-            "【報價單】\n"
-            f"商品價格：{rmb} RMB\n"
-            f"換算台幣價格：{total_ntd:,} 台幣\n"
-            "沒問題的話跟我說一聲～\n"
-            "傳給您付款資訊😽"
-        )
+        quote_text = f"""【報價單】
+        VIP 等級：{vip_level}（手續費 {discount_text}）
+        商品價格：{price_rmb} RMB 
+        換算台幣價格：{price_twd} 台幣 
+        沒問題的話跟我說一聲～
+        傳給您付款資訊😽"""
+
 
         # 預覽（方便手動複製）
         st.text_area("要複製的內容（預覽）", value=quote_text, height=120)
@@ -1040,6 +1040,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
