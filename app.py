@@ -632,7 +632,7 @@ elif menu == "📦 可出貨名單":
             buf_detail.seek(0)
 
             st.download_button(
-                "📥 下載可出貨名單（依勾選客戶｜細項）",
+                "📥 下載可出貨名單（細項）",
                 data=buf_detail,
                 file_name=("可出貨名單_依勾選_排除延後.xlsx" if only_nondelay else "可出貨名單_依勾選_含延後.xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -647,7 +647,7 @@ elif menu == "📦 可出貨名單":
             out_sum.to_excel(buf2, index=False, engine="openpyxl")
             buf2.seek(0)
             st.download_button(
-                "📥 下載可出貨統整（只含勾選）",
+                "📥 下載可出貨統整",
                 data=buf2,
                 file_name="可出貨統整_只含勾選.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1080,6 +1080,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
