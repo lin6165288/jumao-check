@@ -604,9 +604,43 @@ elif menu == "📦 可出貨名單":
 
         picked_names = edited_sum.loc[edited_sum["✅ 選取"] == True, "客戶姓名"].tolist()
 
+        only_nondelay = st.toggle("📄 匯出時排除延後（建議開啟）", value=True, help="勾選後，下載的可出貨名單只包含未標記『延後』的訂單。")
 
-        cc1, cc2, cc3, cc4 = st.columns(4)
 
+        cc0, cc1, cc2, cc3, cc4 = st.columns(5)
+
+        
+        with cc0:
+            # 先取得本次清單中、屬於勾選客戶的訂單
+            df_detail = df_calc[df_calc["customer_name"].isin(picked_names)].copy()
+            if only_nondelay:
+                df_detail = df_detail[~df_detail["delayed_flag"]].copy()
+
+            # 沒資料就不要啟用下載鈕
+            no_detail = (len(picked_names) == 0) or df_detail.empty
+
+            # 用你的格式化函式輸出（與上方「可出貨名單」一致）
+            df_detail_fmt = format_order_df(df_detail.copy())
+        
+            # 也可附上「單號後四碼」方便辨識（選擇性）
+            if "tracking_number" in df_detail_fmt.columns and "單號後四碼" not in df_detail_fmt.columns:
+                df_detail_fmt.insert(1, "單號後四碼", df_detail["tracking_number"].astype(str).str[-4:])
+
+            # 下載（細項）
+            buf_detail = io.BytesIO()
+            df_detail_fmt.to_excel(buf_detail, index=False, engine="openpyxl")
+            buf_detail.seek(0)
+
+            st.download_button(
+                "📥 下載可出貨名單（依勾選客戶｜細項）",
+                data=buf_detail,
+                file_name=("可出貨名單_依勾選_排除延後.xlsx" if only_nondelay else "可出貨名單_依勾選_含延後.xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                disabled=no_detail,
+                use_container_width=True
+            )
+
+        # 下面保留你原本的四個按鈕（下載統整、延後、取消延後、標記已運回）
         with cc1:
             buf2 = io.BytesIO()
             out_sum = edited_sum[edited_sum["✅ 選取"]==True].drop(columns=["✅ 選取"]).copy()
@@ -646,12 +680,10 @@ elif menu == "📦 可出貨名單":
                         st.rerun()
                 except Exception as e:
                     st.error(f"發生錯誤：{e}")
-                    
 
         with cc4:
             if st.button("✅ 標記為已運回 ", disabled=len(picked_names)==0, use_container_width=True):
                 try:
-                    # 只更新本次清單 df_calc 中、屬於勾選客戶的訂單
                     ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                     if ids:
                         placeholders = ",".join(["%s"] * len(ids))
@@ -1048,6 +1080,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
