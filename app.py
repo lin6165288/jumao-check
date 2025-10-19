@@ -108,6 +108,15 @@ def retry_failed_all(conn):
             fail += 1
     return success, fail
 
+
+def delete_failed_one(conn, tracking_number: str):
+    """依 tracking_number 刪除 failed_orders 的單筆資料（唯一鍵）。"""
+    ensure_failed_orders_table(conn)
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM failed_orders WHERE tracking_number=%s LIMIT 1", (tracking_number,))
+    conn.commit()
+
+
 # ===
 DELAY_TAG = "[延後]"
 
@@ -776,20 +785,37 @@ elif menu == "📥 貼上入庫訊息":
                 st.info("⚠️ 下列單號在資料庫找不到，已加入重試佇列：")
                 st.write(missing)
 
+
     # === 佇列檢視 / 操作 ===
     st.markdown("### 📨 未成功單號佇列")
     df_q = load_failed(conn)
     if not df_q.empty:
-        df_q = df_q.rename(columns={
-            "tracking_number": "單號",
-            "weight_kg": "重量(kg)",
-            "raw_message": "原始訊息",
-            "retry_count": "重試次數",
-            "last_error": "最後錯誤"
-        })
-        st.dataframe(df_q, use_container_width=True, height=260)
+        st.caption(f"共有 {len(df_q)} 筆待重試")
+    
+        # 逐列顯示 + 單筆刪除
+        for i, row in df_q.iterrows():
+            tn = str(row["tracking_number"])
+            w  = row.get("weight_kg", None)
+            msg = row.get("raw_message", "")
+            rc  = int(row.get("retry_count", 0))
+            err = row.get("last_error", "")
 
-        c1, c2, c3 = st.columns(3)
+            c1, c2, c3 = st.columns([7, 4, 1])
+            with c1:
+                st.markdown(f"**{tn}**｜入庫重量 **{w if w is not None else '—'} kg**")
+                if msg:
+                    st.caption(msg)
+            with c2:
+                st.write(f"重試次數：{rc}")
+                st.write(f"最後錯誤：{err}")
+            with c3:
+                if st.button("🗑️", key=f"del_fail_{tn}_{i}", help="刪除此筆"):
+                    delete_failed_one(conn, tn)
+                    st.toast(f"已刪除：{tn}")
+                    st.rerun()
+
+        st.divider()
+        c1, _, c3 = st.columns(3)
         with c1:
             if st.button("🔁 重試全部", use_container_width=True):
                 ok, fail = retry_failed_all(conn)
@@ -802,6 +828,7 @@ elif menu == "📥 貼上入庫訊息":
                 st.rerun()
     else:
         st.caption("目前沒有待重試的單號。")
+
 
 
 # =====🚚 批次出貨=====
@@ -1080,6 +1107,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
