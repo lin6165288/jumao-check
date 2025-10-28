@@ -764,46 +764,36 @@ elif menu == "📥 貼上入庫訊息":
             # 寫回資料庫（一次計重；先找已有重量者，否則選最小 id）
             updated, missing = 0, []
             for tn, w, raw_line in found:
-                # 只做最單純的查詢，避免各種 SQL 方言問題
-                cursor.execute("""
-                    SELECT id, weight_kg
-                    FROM orders
-                    WHERE tracking_number = %s
-                """, (tn,))
-                rows = cursor.fetchall()
+                tn = str(tn).strip()
 
-                if not rows:
+                # ⬇⬇⬇ 這裡改用 pandas 做查詢（避免 mysql-connector 參數綁定問題）
+                try:
+                    df_rows = pd.read_sql(
+                        "SELECT id, weight_kg FROM orders WHERE tracking_number = %s",
+                        conn,
+                        params=[tn],
+                    )
+                except Exception as e:
+                    # 查不到或連線例外，丟到佇列
+                    missing.append(tn)
+                    enqueue_failed(conn, tn, w, raw_line, f"查詢失敗: {e}")
+                    continue
+
+                if df_rows.empty:
                     missing.append(tn)
                     enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
                     continue
 
-                # 取欄位的輔助：同時相容 DictCursor / Tuple cursor
-                def _get_id(r):
-                    try:
-                        return r["id"]
-                    except Exception:
-                        return r[0]
-                def _get_w(r):
-                    try:
-                        return r["weight_kg"]
-                    except Exception:
-                        return r[1]
+                # 1) 先找「已有重量」者
+                df_rows["weight_kg"] = df_rows["weight_kg"].fillna(0).astype(float)
+                df_has_w = df_rows[df_rows["weight_kg"] > 0]
 
-                # 1) 先找「已經有重量」的那筆（>0 視為已計重）
-                primary_row = None
-                for r in rows:
-                    rw = _get_w(r)
-                    if rw is not None and float(rw) > 0:
-                        primary_row = r
-                        break
-
-                if primary_row is not None:
-                    primary_id = _get_id(primary_row)
+                if not df_has_w.empty:
+                    primary_id = int(df_has_w.iloc[0]["id"])
                     primary_has_weight = True
                 else:
-                    # 2) 沒有已計重 → 選 id 最小者
-                    ids = [_get_id(r) for r in rows]
-                    primary_id = min(ids)
+                    # 2) 否則選最小 id
+                    primary_id = int(df_rows["id"].min())
                     primary_has_weight = False
 
                 # 3) 寫入主筆
@@ -836,7 +826,7 @@ elif menu == "📥 貼上入庫訊息":
                 updated += 1
 
             conn.commit()
-            
+
 
 
     # === 佇列檢視 / 操作 ===
@@ -1160,6 +1150,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
