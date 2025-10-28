@@ -761,72 +761,59 @@ elif menu == "📥 貼上入庫訊息":
 
             
             
-            # 寫回資料庫（一次計重；先找已有重量者，否則選最小 id）
+            # 寫回資料庫（同單號只計一次；不依賴 id 欄位）
             updated, missing = 0, []
             for tn, w, raw_line in found:
                 tn = str(tn).strip()
 
-                # ⬇⬇⬇ 這裡改用 pandas 做查詢（避免 mysql-connector 參數綁定問題）
+                # 1) 先查此單號是否已經有「>0 的重量」的主筆（有就保留，不覆寫）
                 try:
-                    df_rows = pd.read_sql(
-                        "SELECT id, weight_kg FROM orders WHERE tracking_number = %s",
+                    df_chk = pd.read_sql(
+                        "SELECT COUNT(*) AS cnt FROM orders WHERE tracking_number = %s AND COALESCE(weight_kg,0) > 0",
                         conn,
                         params=[tn],
                     )
+                    has_primary = int(df_chk.iloc[0]["cnt"]) > 0
                 except Exception as e:
-                    # 查不到或連線例外，丟到佇列
                     missing.append(tn)
                     enqueue_failed(conn, tn, w, raw_line, f"查詢失敗: {e}")
                     continue
 
-                if df_rows.empty:
-                    missing.append(tn)
-                    enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
-                    continue
-
-                # 1) 先找「已有重量」者
-                df_rows["weight_kg"] = df_rows["weight_kg"].fillna(0).astype(float)
-                df_has_w = df_rows[df_rows["weight_kg"] > 0]
-
-                if not df_has_w.empty:
-                    primary_id = int(df_has_w.iloc[0]["id"])
-                    primary_has_weight = True
-                else:
-                    # 2) 否則選最小 id
-                    primary_id = int(df_rows["id"].min())
-                    primary_has_weight = False
-
-                # 3) 寫入主筆
-                if primary_has_weight:
+                if has_primary:
+                    # 2a) 已有主筆：只把「其他同單號且目前重量為 0/NULL 的」設為 0kg + 到倉
                     cursor.execute("""
                         UPDATE orders
                         SET is_arrived = 1,
-                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 主筆保留既有重量')
-                        WHERE id = %s
-                    """, (primary_id,))
+                            weight_kg = 0,
+                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 同單號=0kg')
+                        WHERE tracking_number = %s
+                          AND (weight_kg IS NULL OR weight_kg = 0)
+                    """, (tn,))
                 else:
+                    # 2b) 尚未有主筆：先把其中「一筆重量為 0/NULL」的 設為本次重量（主筆）
                     cursor.execute("""
                         UPDATE orders
                         SET is_arrived = 1,
                             weight_kg = %s,
                             remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 主筆=', %s, 'kg')
-                        WHERE id = %s
-                    """, (w, str(w), primary_id))
+                        WHERE tracking_number = %s
+                          AND (weight_kg IS NULL OR weight_kg = 0)
+                        LIMIT 1
+                    """, (w, str(w), tn))
 
-                # 4) 其他同單號 → 0kg + 已到倉
-                cursor.execute("""
-                    UPDATE orders
-                    SET is_arrived = 1,
-                        weight_kg = 0,
-                        remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 同單號=0kg')
-                    WHERE tracking_number = %s
-                      AND id <> %s
-                """, (tn, primary_id))
+                    # 再把其餘同單號且仍為 0/NULL 的，設為 0kg + 到倉
+                    cursor.execute("""
+                        UPDATE orders
+                        SET is_arrived = 1,
+                            weight_kg = 0,
+                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 同單號=0kg')
+                        WHERE tracking_number = %s
+                          AND (weight_kg IS NULL OR weight_kg = 0)
+                    """, (tn,))
 
                 updated += 1
 
             conn.commit()
-
 
 
     # === 佇列檢視 / 操作 ===
@@ -1150,6 +1137,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
