@@ -759,31 +759,76 @@ elif menu == "📥 貼上入庫訊息":
             st.success(f"解析到 {len(found)} 筆：")
             st.write([(tn, w) for (tn, w, _) in found])
 
-            # 寫回資料庫
+            
+            # 寫回資料庫（新邏輯：同單號多筆 → 只有一筆計重，其餘0kg + 已到倉）
             updated, missing = 0, []
             for tn, w, raw_line in found:
-                cursor.execute(
-                    """
-                    UPDATE orders 
-                    SET is_arrived = 1,
-                        weight_kg = %s,
-                        remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫', NOW())
+                # 1) 先抓此單號所有列
+                cursor.execute("""
+                    SELECT id, weight_kg
+                    FROM orders
                     WHERE tracking_number = %s
-                    """,
-                    (w, tn)
-                )
-                if cursor.rowcount == 0:
-                    missing.append(tn)
-                    # ⬇️ 記到 JSON 佇列，帶上已解析的重量與原始訊息
-                    enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
-                else:
-                    updated += 1
-            conn.commit()
+                    ORDER BY id ASC
+                """, (tn,))
+                rows = cursor.fetchall()
 
-            st.success(f"✅ 成功更新 {updated} 筆到貨資料")
-            if missing:
-                st.info("⚠️ 下列單號在資料庫找不到，已加入重試佇列：")
-                st.write(missing)
+                if not rows:
+                    missing.append(tn)
+                    enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
+                    continue
+
+                # 安全取欄位的輔助函式
+                def _get_id(row):
+                    try:
+                        return row["id"]
+                    except Exception:
+                        return row[0]
+
+                def _get_w(row):
+                    try:
+                        return row["weight_kg"]
+                    except Exception:
+                        return row[1]
+
+                # 2) 決定主筆
+                existed_weight_rows = [r for r in rows if (_get_w(r) or 0) > 0]
+                if existed_weight_rows:
+                    primary_id = _get_id(existed_weight_rows[0])
+                    primary_has_weight = True
+                else:
+                    primary_id = _get_id(rows[0])
+                    primary_has_weight = False
+
+                # 3) 寫入主筆
+                if primary_has_weight:
+                    cursor.execute("""
+                        UPDATE orders
+                        SET is_arrived = 1,
+                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 主筆保留既有重量')
+                        WHERE id = %s
+                    """, (primary_id,))
+                else:
+                    cursor.execute("""
+                        UPDATE orders
+                        SET is_arrived = 1,
+                            weight_kg = %s,
+                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 主筆=', %s, 'kg')
+                        WHERE id = %s
+                    """, (w, str(w), primary_id))
+
+                # 4) 其他同單號 → 0kg + 已到倉
+                cursor.execute("""
+                    UPDATE orders
+                    SET is_arrived = 1,
+                        weight_kg = 0,
+                        remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 同單號=0kg')
+                    WHERE tracking_number = %s
+                      AND id <> %s
+                """, (tn, primary_id))
+
+                updated += 1  # 每個單號算一筆成功
+
+            conn.commit()
 
 
     # === 佇列檢視 / 操作 ===
@@ -1107,6 +1152,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
