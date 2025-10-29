@@ -766,12 +766,26 @@ elif menu == "📥 貼上入庫訊息":
             for tn, w, raw_line in found:
                 tn = str(tn).strip()
 
-                # 1) 先查此單號是否已經有「>0 的重量」的主筆（有就保留，不覆寫）
+                # ✅ (A) 先確認此單號是否存在；不存在 → 進佇列
+                try:
+                    df_exist = pd.read_sql(
+                        "SELECT COUNT(*) AS cnt FROM orders WHERE tracking_number = %s",
+                        conn, params=[tn],
+                    )
+                    if int(df_exist.iloc[0]["cnt"]) == 0:
+                        missing.append(tn)
+                        enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
+                        continue
+                except Exception as e:
+                    missing.append(tn)
+                    enqueue_failed(conn, tn, w, raw_line, f"查詢失敗: {e}")
+                    continue
+
+                # (B) 是否已有主筆（>0）
                 try:
                     df_chk = pd.read_sql(
                         "SELECT COUNT(*) AS cnt FROM orders WHERE tracking_number = %s AND COALESCE(weight_kg,0) > 0",
-                        conn,
-                        params=[tn],
+                        conn, params=[tn],
                     )
                     has_primary = int(df_chk.iloc[0]["cnt"]) > 0
                 except Exception as e:
@@ -780,7 +794,7 @@ elif menu == "📥 貼上入庫訊息":
                     continue
 
                 if has_primary:
-                    # 2a) 已有主筆：只把「其他同單號且目前重量為 0/NULL 的」設為 0kg + 到倉
+                    # 已有主筆：其餘同單號仍為 0/NULL 的設為 0kg + 到倉
                     cursor.execute("""
                         UPDATE orders
                         SET is_arrived = 1,
@@ -789,8 +803,9 @@ elif menu == "📥 貼上入庫訊息":
                         WHERE tracking_number = %s
                           AND (weight_kg IS NULL OR weight_kg = 0)
                     """, (tn,))
+                    updated += 1
                 else:
-                    # 2b) 尚未有主筆：先把其中「一筆重量為 0/NULL」的 設為本次重量（主筆）
+                    # 尚未有主筆：挑一筆 0/NULL 的當主筆
                     cursor.execute("""
                         UPDATE orders
                         SET is_arrived = 1,
@@ -801,7 +816,13 @@ elif menu == "📥 貼上入庫訊息":
                         LIMIT 1
                     """, (w, str(w), tn))
 
-                    # 再把其餘同單號且仍為 0/NULL 的，設為 0kg + 到倉
+                    # ✅ (C) 若 LIMIT 1 沒更新到任何列 → 也進佇列
+                    if cursor.rowcount == 0:
+                        missing.append(tn)
+                        enqueue_failed(conn, tn, w, raw_line, "存在該單號，但沒有可更新為主筆的列")
+                        continue
+
+                    # 其餘同單號 → 0kg + 到倉
                     cursor.execute("""
                         UPDATE orders
                         SET is_arrived = 1,
@@ -810,10 +831,16 @@ elif menu == "📥 貼上入庫訊息":
                         WHERE tracking_number = %s
                           AND (weight_kg IS NULL OR weight_kg = 0)
                     """, (tn,))
-
-                updated += 1
+                    updated += 1
 
             conn.commit()
+
+#（可選）給使用者回饋
+st.success(f"✅ 成功更新 {updated} 筆到貨資料")
+if missing:
+    st.info("⚠️ 下列單號未能即時更新，已加入重試佇列：")
+    st.write(missing)
+
 
 
     # === 佇列檢視 / 操作 ===
@@ -1137,6 +1164,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
