@@ -758,15 +758,15 @@ elif menu == "📥 貼上入庫訊息":
         else:
             st.success(f"解析到 {len(found)} 筆：")
             st.write([(tn, w) for (tn, w, _) in found])
-
             
             
-            # 寫回資料庫（同單號只計一次；不依賴 id 欄位）
+            
+            # 寫回資料庫（同單號只計一次：全部歸 0，再選一筆當主筆）
             updated, missing = 0, []
             for tn, w, raw_line in found:
                 tn = str(tn).strip()
 
-                # ✅ (A) 先確認此單號是否存在；不存在 → 進佇列
+                # (A) 先確認此單號是否存在；不存在 → 丟進佇列
                 try:
                     df_exist = pd.read_sql(
                         "SELECT COUNT(*) AS cnt FROM orders WHERE tracking_number = %s",
@@ -781,61 +781,34 @@ elif menu == "📥 貼上入庫訊息":
                     enqueue_failed(conn, tn, w, raw_line, f"查詢失敗: {e}")
                     continue
 
-                # (B) 是否已有主筆（>0）
-                try:
-                    df_chk = pd.read_sql(
-                        "SELECT COUNT(*) AS cnt FROM orders WHERE tracking_number = %s AND COALESCE(weight_kg,0) > 0",
-                        conn, params=[tn],
-                    )
-                    has_primary = int(df_chk.iloc[0]["cnt"]) > 0
-                except Exception as e:
+                # (B) 先把這個單號「全部設為 0kg + 已到貨」
+                cursor.execute("""
+                    UPDATE orders
+                    SET is_arrived = 1,
+                        weight_kg = 0,
+                        remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 同單號=0kg')
+                    WHERE tracking_number = %s
+                """, (tn,))
+
+                # (C) 再從裡面挑一筆設為這次的重量（主筆），LIMIT 1 保證只一筆
+                cursor.execute("""
+                    UPDATE orders
+                    SET weight_kg = %s,
+                        remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 主筆=', %s, 'kg')
+                    WHERE tracking_number = %s
+                    LIMIT 1
+                """, (w, str(w), tn))
+
+                # 如果 LIMIT 1 沒更新到任何列 → 有怪，丟進佇列
+                if cursor.rowcount == 0:
                     missing.append(tn)
-                    enqueue_failed(conn, tn, w, raw_line, f"查詢失敗: {e}")
+                    enqueue_failed(conn, tn, w, raw_line, "存在該單號，但更新主筆失敗")
                     continue
-
-                if has_primary:
-                    # 已有主筆：其餘同單號仍為 0/NULL 的設為 0kg + 到倉
-                    cursor.execute("""
-                        UPDATE orders
-                        SET is_arrived = 1,
-                            weight_kg = 0,
-                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 同單號=0kg')
-                        WHERE tracking_number = %s
-                          AND (weight_kg IS NULL OR weight_kg = 0)
-                    """, (tn,))
-                    updated += 1
-                else:
-                    # 尚未有主筆：挑一筆 0/NULL 的當主筆
-                    cursor.execute("""
-                        UPDATE orders
-                        SET is_arrived = 1,
-                            weight_kg = %s,
-                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 主筆=', %s, 'kg')
-                        WHERE tracking_number = %s
-                          AND (weight_kg IS NULL OR weight_kg = 0)
-                        LIMIT 1
-                    """, (w, str(w), tn))
-
-                    # ✅ (C) 若 LIMIT 1 沒更新到任何列 → 也進佇列
-                    if cursor.rowcount == 0:
-                        missing.append(tn)
-                        enqueue_failed(conn, tn, w, raw_line, "存在該單號，但沒有可更新為主筆的列")
-                        continue
-
-                    # 其餘同單號 → 0kg + 到倉
-                    cursor.execute("""
-                        UPDATE orders
-                        SET is_arrived = 1,
-                            weight_kg = 0,
-                            remarks = CONCAT(COALESCE(remarks,''), '｜自動入庫(', NOW(), ') 同單號=0kg')
-                        WHERE tracking_number = %s
-                          AND (weight_kg IS NULL OR weight_kg = 0)
-                    """, (tn,))
-                    updated += 1
+    
+                updated += 1
 
             conn.commit()
-
-            #（可選）給使用者回饋
+    
             st.success(f"✅ 成功更新 {updated} 筆到貨資料")
             if missing:
                 st.info("⚠️ 下列單號未能即時更新，已加入重試佇列：")
@@ -1164,6 +1137,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
