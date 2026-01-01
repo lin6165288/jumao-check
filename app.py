@@ -12,6 +12,13 @@ from feedback_store import init_db, read_feedbacks, update_status
 init_db()
 
 
+st.write("DEBUG secrets keys:", list(st.secrets.keys()))
+st.write("DEBUG mysql keys:", list(st.secrets["mysql"].keys()))
+st.write("DEBUG HOST:", st.secrets["mysql"]["host"])
+st.write("DEBUG PORT:", st.secrets["mysql"].get("port"))
+st.stop()
+
+
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
 
 QUEUE_FILE = "failed_inbound_queue.json"
@@ -1147,6 +1154,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
