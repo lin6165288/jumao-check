@@ -11,7 +11,7 @@ db_cfg = st.secrets["mysql"]
 def _conn():
     conn = mysql.connector.connect(
         host=db_cfg["host"],
-        port=int(db_cfg.get("port", 3306))
+        port=int(db_cfg.get("port", 3306)),
         user=db_cfg["user"],
         password=db_cfg["password"],
         database=db_cfg["database"],
