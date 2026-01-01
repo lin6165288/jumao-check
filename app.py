@@ -440,11 +440,6 @@ elif menu == "🔍 搜尋訂單":
 elif menu == "📦 可出貨名單":
     st.subheader("📦 可出貨名單")
 
-    st.error("✅ LIVE TEST: ready list loaded")
-    st.stop()
-
-
-
     df_all = pd.read_sql("SELECT * FROM orders", conn)
     if df_all.empty:
         st.info("目前沒有任何訂單資料。")
@@ -1152,6 +1147,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
