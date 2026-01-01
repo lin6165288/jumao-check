@@ -190,14 +190,15 @@ def format_order_df(df):
 # ===== 資料庫連線 =====
 
 conn = mysql.connector.connect(
-    host     = st.secrets["mysql"]["host"],
-    port     = int(st.secrets["mysql"]["port"]),
-    user     = st.secrets["mysql"]["user"],
-    password = st.secrets["mysql"]["password"],
-    database = st.secrets["mysql"]["database"],
-    charset  = "utf8mb4",
+    host=st.secrets["mysql"]["host"],
+    port=int(st.secrets["mysql"]["port"]),
+    user=st.secrets["mysql"]["user"],
+    password=st.secrets["mysql"]["password"],
+    database=st.secrets["mysql"]["database"],
+    charset="utf8mb4",
     connection_timeout=10,
 )
+
 st.success("✅ DB connected")
 
 
@@ -1146,6 +1147,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
