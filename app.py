@@ -9,7 +9,12 @@ import math
 import json, os
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from feedback_store import init_db, read_feedbacks, update_status
-init_db()
+
+
+if "db_inited" not in st.session_state:
+    init_db()
+    st.session_state["db_inited"] = True
+
 
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
@@ -1147,6 +1152,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
