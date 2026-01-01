@@ -550,7 +550,7 @@ elif menu == "📦 可出貨名單":
             return max(base, math.ceil(float(w) / 0.5) * 0.5)
         
         def unit_price(pf):
-            return 75.0 if pf == "集運" else 60.0
+            return 90.0 if pf == "集運" else 70.0
 
         grp["billed_w"]     = grp.apply(lambda r: billed_weight(r["total_w"], r["platform"]), axis=1)
         grp["price_per_kg"] = grp["platform"].apply(unit_price)
@@ -1137,6 +1137,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
