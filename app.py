@@ -191,12 +191,14 @@ def format_order_df(df):
 
 conn = mysql.connector.connect(
     host     = st.secrets["mysql"]["host"],
-    port     = st.secrets["mysql"]["port"],
+    port     = int(st.secrets["mysql"]["port"]),
     user     = st.secrets["mysql"]["user"],
     password = st.secrets["mysql"]["password"],
     database = st.secrets["mysql"]["database"],
     charset  = "utf8mb4",
+    connection_timeout=10,
 )
+st.success("✅ DB connected")
 
 
 cursor = conn.cursor(dictionary=True)
