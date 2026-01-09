@@ -15,10 +15,13 @@ init_db()
 db_cfg = st.secrets["mysql"]
 def get_connection():
     return mysql.connector.connect(
-        host=db_cfg["host"],
-        user=db_cfg["user"],
-        password=db_cfg["password"],
-        database=db_cfg["database"],
+        host=st.secrets["mysql"]["host"],
+        port=int(st.secrets["mysql"]["port"]),
+        user=st.secrets["mysql"]["user"],
+        password=st.secrets["mysql"]["password"],
+        database=st.secrets["mysql"]["database"],
+        charset="utf8mb4",
+        connection_timeout=10,
     )
 
 # ===== 訂單查詢頁 =====
@@ -146,4 +149,5 @@ A：以【包裹實重】為準；若多件包裹會合併計算。實際費用�
 **Q8：可以合併多件一起運回嗎？**  
 A：可以，我們會在同一批次盡量合併；如需分批或加急請先告知橘貓。
 """)
+
 
