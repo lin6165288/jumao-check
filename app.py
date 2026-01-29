@@ -258,41 +258,49 @@ if menu == "📋 訂單總表":
 
 
 # 2. 新增訂單
-# 2. 新增訂單
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
+    name_options = get_customer_names(conn)
 
-    # 取歷史姓名清單（當建議）
-    name_options = get_customer_names(conn)  # 或 get_customer_names()
+    # 讓姓名/建議看起來是同一組
+    with st.container(border=True):
+        st.markdown("#### 客戶姓名")
 
-    # ✅ 用自訂 state，不綁 widget key，避免 StreamlitAPIException
-    if "add_name" not in st.session_state:
-        st.session_state["add_name"] = ""
+        if "add_name" not in st.session_state:
+            st.session_state["add_name"] = ""
 
-    # ✅ 1) 客戶姓名（放在 form 外面，才能打字即時刷新建議）
-    name = st.text_input("客戶姓名", value=st.session_state["add_name"])
-    st.session_state["add_name"] = name  # 同步輸入內容
+        # 姓名輸入（不綁 key，避免 session_state 寫入錯誤）
+        name = st.text_input(
+            "輸入姓名（打字會出現建議）",
+            value=st.session_state["add_name"],
+            label_visibility="collapsed",
+            placeholder="例如：abc（打 a 會出現歷史姓名）"
+        )
+        st.session_state["add_name"] = name
 
-    q = (st.session_state["add_name"] or "").strip().lower()
-    if q:
-        suggestions = [n for n in name_options if n.lower().startswith(q)]
-        suggestions = suggestions[:8]
+        q = (st.session_state["add_name"] or "").strip().lower()
+        if q:
+            suggestions = [n for n in name_options if n.lower().startswith(q)]
+            suggestions = suggestions[:8]
 
-        if suggestions:
-            st.caption("建議（點一下直接帶入）：")
-            cols = st.columns(min(4, len(suggestions)))
+            if suggestions:
+                st.caption("建議（點一下直接帶入）")
+                cols = st.columns(min(4, len(suggestions)))
 
-            def _pick(n):
-                st.session_state["add_name"] = n
+                def _pick(n):
+                    st.session_state["add_name"] = n
 
-            for i, s in enumerate(suggestions):
-                cols[i % len(cols)].button(
-                    s,
-                    key=f"namepick_{s}",
-                    use_container_width=True,
-                    on_click=_pick,
-                    args=(s,)
-                )
+                for i, s in enumerate(suggestions):
+                    cols[i % len(cols)].button(
+                        s,
+                        key=f"namepick_{s}",
+                        use_container_width=True,
+                        on_click=_pick,
+                        args=(s,)
+                    )
+        else:
+            st.caption("提示：輸入任一字母/文字，就會顯示過去的姓名建議")
+
 
     # ✅ 2) 其他欄位照舊放在 form 內
     with st.form("add_order_form", clear_on_submit=True):
@@ -1204,6 +1212,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
