@@ -207,6 +207,20 @@ conn = mysql.connector.connect(
 
 st.success("✅ DB connected")
 
+#歷史名字搜尋
+@st.cache_data(ttl=300)
+def get_customer_names(conn):
+    try:
+        df = pd.read_sql("""
+            SELECT DISTINCT customer_name
+            FROM orders
+            WHERE customer_name IS NOT NULL AND customer_name <> ''
+            ORDER BY customer_name
+        """, conn)
+        return df["customer_name"].tolist()
+    except Exception:
+        return []
+
 
 cursor = conn.cursor(dictionary=True)
 
@@ -244,20 +258,6 @@ if menu == "📋 訂單總表":
 
 # 2. 新增訂單
 # 2. 新增訂單
-
-@st.cache_data(ttl=300)
-def get_customer_names(conn):
-    try:
-        df = pd.read_sql("""
-            SELECT DISTINCT customer_name
-            FROM orders
-            WHERE customer_name IS NOT NULL AND customer_name <> ''
-            ORDER BY customer_name
-        """, conn)
-        return df["customer_name"].tolist()
-    except Exception:
-        return []
-
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
@@ -1216,6 +1216,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
