@@ -15,15 +15,6 @@ if "db_inited" not in st.session_state:
     init_db()
     st.session_state["db_inited"] = True
 
-def get_customer_names(conn):
-    df = pd.read_sql("""
-        SELECT DISTINCT customer_name
-        FROM orders
-        WHERE customer_name IS NOT NULL AND customer_name <> ''
-        ORDER BY customer_name
-    """, conn)
-    return df["customer_name"].tolist()
-
 
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
@@ -216,18 +207,15 @@ conn = mysql.connector.connect(
 st.success("✅ DB connected")
 
 #歷史名字搜尋
-@st.cache_data(ttl=300)
+
 def get_customer_names(conn):
-    try:
-        df = pd.read_sql("""
-            SELECT DISTINCT customer_name
-            FROM orders
-            WHERE customer_name IS NOT NULL AND customer_name <> ''
-            ORDER BY customer_name
-        """, conn)
-        return df["customer_name"].tolist()
-    except Exception:
-        return []
+    df = pd.read_sql("""
+        SELECT DISTINCT customer_name
+        FROM orders
+        WHERE customer_name IS NOT NULL AND customer_name <> ''
+        ORDER BY customer_name
+    """, conn)
+    return df["customer_name"].tolist()
 
 
 cursor = conn.cursor(dictionary=True)
@@ -1224,6 +1212,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
