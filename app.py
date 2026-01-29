@@ -1,3 +1,7 @@
+import pkgutil, streamlit as st
+st.write("autosuggest installed?", any(m.name == "streamlit_autosuggest" for m in pkgutil.iter_modules()))
+
+
 import streamlit as st
 import mysql.connector
 from streamlit_autosuggest import searchbar
@@ -1172,6 +1176,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
