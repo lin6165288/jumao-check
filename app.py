@@ -1,16 +1,23 @@
-import pkgutil, streamlit as st
-st.write("autosuggest installed?", any(m.name == "streamlit_autosuggest" for m in pkgutil.iter_modules()))
-
 import importlib.metadata as md
 import streamlit as st
 import mysql.connector
 
-try:
-    st.write("streamlit-autosuggest dist version:", md.version("streamlit-autosuggest"))
-    from streamlit_autosuggest import searchbar
-except Exception as e:
-    searchbar = None
-    st.warning(f"autosuggest 沒安裝成功，先降級用一般輸入框：{e}")
+st.write("streamlit-autosuggest dist version:", md.version("streamlit-autosuggest"))
+
+searchbar = None
+for modname in ["streamlit_autosuggest", "st_autosuggest", "streamlit_autosuggest.searchbar"]:
+    try:
+        m = importlib.import_module(modname)
+        # 常見是 module 內直接有 searchbar
+        if hasattr(m, "searchbar"):
+            searchbar = getattr(m, "searchbar")
+            st.success(f"✅ autosuggest module loaded: {modname}")
+            break
+    except Exception:
+        pass
+
+if searchbar is None:
+    st.warning("⚠️ autosuggest 模組載入失敗，暫時降級用一般輸入框")
     
 import pandas as pd
 import time
@@ -278,17 +285,15 @@ elif menu == "🧾 新增訂單":
 
         # ✅ 改這行：同一欄位可建議、可自由輸入新名字
         # ✅ 客戶姓名：有 autosuggest 就用，沒有就退回一般輸入框
-        if searchbar is not None:
+        if searchbar:
             name = searchbar(
                 suggestions=name_options,
                 placeholder="輸入客戶姓名（打 a 會跳出 abc/add，可直接輸入新名字）",
                 key="add_customer_name"
             )
         else:
-            name = st.text_input(
-                "客戶姓名（目前 autosuggest 未安裝，先用一般輸入）",
-                key="add_customer_name"
-            )
+            name = st.text_input("客戶姓名", key="add_customer_name")
+
 
 
         platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
@@ -1191,6 +1196,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
