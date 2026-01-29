@@ -258,30 +258,29 @@ elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
     # 取歷史姓名清單（當建議）
-    name_options = get_customer_names(conn)
+    name_options = get_customer_names(conn)  # 如果你已拿掉 cache，這行OK
+    # 若你用不收conn版：name_options = get_customer_names()
 
-    # --- 表單區塊 ---
+    # ✅ 1) 客戶姓名（放在 form 外面，才能打字即時刷新建議）
+    name = st.text_input("客戶姓名", key="add_customer_name")
+
+    q = (name or "").strip().lower()
+    if q:
+        # 前綴匹配：打 x -> 徐xx
+        suggestions = [n for n in name_options if n.lower().startswith(q)]
+        suggestions = suggestions[:8]
+
+        if suggestions:
+            st.caption("建議（點一下直接帶入）：")
+            cols = st.columns(min(4, len(suggestions)))
+            for i, s in enumerate(suggestions):
+                if cols[i % len(cols)].button(s, key=f"namepick_{s}", use_container_width=True):
+                    st.session_state["add_customer_name"] = s
+                    st.rerun()
+
+    # ✅ 2) 其他欄位照舊放在 form 內
     with st.form("add_order_form", clear_on_submit=True):
-        order_time = st.date_input("下單日期", datetime.today(), key="add_order_time")
-
-        # ✅ 同一欄位：可自由輸入 + 下面顯示建議（可點選帶入）
-        name = st.text_input("客戶姓名", key="add_customer_name")
-
-        q = (st.session_state.get("add_customer_name") or "").strip().lower()
-        picked_name = None
-
-        if q:
-            # 前綴匹配：打 a -> abc / add
-            suggestions = [n for n in name_options if n.lower().startswith(q)]
-            suggestions = suggestions[:8]  # 最多顯示 8 個
-
-            if suggestions:
-                st.caption("建議（點一下直接帶入）：")
-                cols = st.columns(min(4, len(suggestions)))
-                for i, s in enumerate(suggestions):
-                    if cols[i % len(cols)].form_submit_button(s, use_container_width=True):
-                        picked_name = s
-
+        order_time      = st.date_input("下單日期", datetime.today(), key="add_order_time")
         platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
         tracking_number = st.text_input("包裹單號", key="add_tracking_number")
         amount_rmb      = st.number_input("訂單金額（人民幣）", min_value=0.0, value=0.0, step=1.0, key="add_amount_rmb")
@@ -293,15 +292,8 @@ elif menu == "🧾 新增訂單":
 
         submit = st.form_submit_button("✅ 新增訂單")
 
-    # --- 按下送出後的處理 ---
-    # 若剛剛有點建議按鈕，優先用被點選的名字
-    if picked_name:
-        st.session_state["add_customer_name"] = picked_name
-        name = picked_name
-
     if submit:
-        name = (name or "").strip()  # 避免 None
-
+        name = (st.session_state.get("add_customer_name") or "").strip()
         if not name:
             st.error("⚠️ 請輸入客戶姓名")
         else:
@@ -316,36 +308,9 @@ elif menu == "🧾 新增訂單":
                  amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
             )
             conn.commit()
-
-            # 新增了新名字的話：清掉快取，讓建議清單馬上更新
             st.cache_data.clear()
-
             st.toast("✅ 訂單已新增！")
 
-
-    # --- 按下送出後的處理 ---
-    if submit:
-        name = (name or "").strip()  # ✅ 避免 None
-
-        if not name:
-            st.error("⚠️ 請輸入客戶姓名")
-        else:
-            cursor.execute(
-                """
-                INSERT INTO orders 
-                  (order_time, customer_name, platform, tracking_number,
-                   amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                (order_time, name, platform, tracking_number,
-                 amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
-            )
-            conn.commit()
-
-            # 新增了新名字的話：清掉快取，讓建議清單馬上更新
-            st.cache_data.clear()
-
-            st.toast("✅ 訂單已新增！")
 
        
 
@@ -1212,6 +1177,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
