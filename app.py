@@ -444,7 +444,8 @@ elif menu == "✏️ 編輯訂單":
             st.rerun()
 
         # ===== 刪除按鈕 =====
-        if st.button("🗑 刪除此訂單"):
+        confirm_del = st.checkbox("我確認要刪除這筆訂單")
+        if st.button("🗑 刪除此訂單", disabled=not confirm_del):
             cursor.execute("DELETE FROM orders WHERE order_id = %s", (edit_id,))
             conn.commit()
             st.toast("🗑 訂單已刪除！")
@@ -1195,6 +1196,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
