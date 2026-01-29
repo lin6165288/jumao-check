@@ -3,7 +3,6 @@ mysql-connector-python
 pandas
 openpyxl
 streamlit-aggrid
-streamlit-autosuggest==0.2.1
-# force rebuild 2026-01-30
+
 
 
