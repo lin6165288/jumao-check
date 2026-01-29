@@ -439,17 +439,17 @@ elif menu == "✏️ 編輯訂單":
                 )
             )
             conn.commit()
-            # 顯示 1 秒成功訊息後自動消失
-            notice = st.empty()
-            notice.success("✅ 訂單已更新！")
-            time.sleep(1)
-            notice.empty()
+            
+            st.toast("✅ 訂單已更新！")
+            st.rerun()
 
         # ===== 刪除按鈕 =====
         if st.button("🗑 刪除此訂單"):
             cursor.execute("DELETE FROM orders WHERE order_id = %s", (edit_id,))
             conn.commit()
-            st.success("🗑 訂單已刪除！")
+            st.toast("🗑 訂單已刪除！")
+            st.rerun()  # 刪掉後刷新，避免 selectbox 還選到已刪的 id
+
 
 # 4. 搜尋訂單
 
@@ -1195,6 +1195,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
