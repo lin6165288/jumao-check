@@ -274,7 +274,7 @@ elif menu == "🧾 新增訂單":
             "輸入姓名（打字會出現建議）",
             value=st.session_state["add_name"],
             label_visibility="collapsed",
-            placeholder="例如：abc（打 a 會出現歷史姓名）"
+            placeholder="請輸入客戶名稱"
         )
         st.session_state["add_name"] = name
 
@@ -299,7 +299,7 @@ elif menu == "🧾 新增訂單":
                         args=(s,)
                     )
         else:
-            st.caption("提示：輸入任一字母/文字，就會顯示過去的姓名建議")
+            st.caption("請輸入任一字母/文字")
 
 
     # ✅ 2) 其他欄位照舊放在 form 內
@@ -1212,6 +1212,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
