@@ -4,4 +4,3 @@ pandas
 openpyxl
 streamlit-aggrid
 streamlit-autosuggest
-
