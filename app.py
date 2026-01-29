@@ -1,36 +1,5 @@
-import importlib.metadata as md
-import importlib
-import pkgutil
 import streamlit as st
 import mysql.connector
-
-st.write("streamlit-autosuggest dist version:", md.version("streamlit-autosuggest"))
-
-# 列出所有包含 suggest 關鍵字的模組（找真正 import 名）
-mods = [m.name for m in pkgutil.iter_modules()]
-cands = [x for x in mods if "suggest" in x.lower()]
-st.write("modules contains 'suggest':", cands)
-
-searchbar = None
-last_err = None
-
-# 依序嘗試幾個常見名稱
-for modname in ["streamlit_autosuggest", "st_autosuggest", "autosuggest"]:
-    try:
-        m = importlib.import_module(modname)
-        if hasattr(m, "searchbar"):
-            searchbar = m.searchbar
-            st.success(f"✅ autosuggest loaded: {modname}")
-            break
-        else:
-            last_err = f"{modname} imported but no searchbar attr"
-    except Exception as e:
-        last_err = f"{modname} import error: {repr(e)}"
-
-if searchbar is None:
-    st.warning("⚠️ autosuggest 模組載入失敗，暫時降級用一般輸入框")
-    st.code(str(last_err))
-    
 import pandas as pd
 import time
 from datetime import datetime
@@ -47,16 +16,6 @@ if "db_inited" not in st.session_state:
     st.session_state["db_inited"] = True
 
 
-# 建議：把取名字包成快取，避免每次 rerun 都查 DB
-@st.cache_data(ttl=300)  # 5 分鐘更新一次
-def get_customer_names(_conn):
-    df = pd.read_sql("""
-        SELECT DISTINCT customer_name
-        FROM orders
-        WHERE customer_name IS NOT NULL AND customer_name <> ''
-        ORDER BY customer_name
-    """, _conn)
-    return df["customer_name"].tolist()
 
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
@@ -284,7 +243,7 @@ if menu == "📋 訂單總表":
 
 
 # 2. 新增訂單
-
+# 2. 新增訂單
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
@@ -293,20 +252,25 @@ elif menu == "🧾 新增訂單":
 
     # --- 表單區塊 ---
     with st.form("add_order_form", clear_on_submit=True):
-        order_time      = st.date_input("下單日期", datetime.today(), key="add_order_time")
+        order_time = st.date_input("下單日期", datetime.today(), key="add_order_time")
 
-        # ✅ 改這行：同一欄位可建議、可自由輸入新名字
-        # ✅ 客戶姓名：有 autosuggest 就用，沒有就退回一般輸入框
-        if searchbar:
-            name = searchbar(
-                suggestions=name_options,
-                placeholder="輸入客戶姓名（打 a 會跳出 abc/add，可直接輸入新名字）",
-                key="add_customer_name"
-            )
-        else:
-            name = st.text_input("客戶姓名", key="add_customer_name")
+        # ✅ 同一欄位：可自由輸入 + 下面顯示建議（可點選帶入）
+        name = st.text_input("客戶姓名", key="add_customer_name")
 
+        q = (st.session_state.get("add_customer_name") or "").strip().lower()
+        picked_name = None
 
+        if q:
+            # 前綴匹配：打 a -> abc / add
+            suggestions = [n for n in name_options if n.lower().startswith(q)]
+            suggestions = suggestions[:8]  # 最多顯示 8 個
+
+            if suggestions:
+                st.caption("建議（點一下直接帶入）：")
+                cols = st.columns(min(4, len(suggestions)))
+                for i, s in enumerate(suggestions):
+                    if cols[i % len(cols)].form_submit_button(s, use_container_width=True):
+                        picked_name = s
 
         platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
         tracking_number = st.text_input("包裹單號", key="add_tracking_number")
@@ -318,6 +282,36 @@ elif menu == "🧾 新增訂單":
         remarks         = st.text_area("備註", key="add_remarks")
 
         submit = st.form_submit_button("✅ 新增訂單")
+
+    # --- 按下送出後的處理 ---
+    # 若剛剛有點建議按鈕，優先用被點選的名字
+    if picked_name:
+        st.session_state["add_customer_name"] = picked_name
+        name = picked_name
+
+    if submit:
+        name = (name or "").strip()  # 避免 None
+
+        if not name:
+            st.error("⚠️ 請輸入客戶姓名")
+        else:
+            cursor.execute(
+                """
+                INSERT INTO orders 
+                  (order_time, customer_name, platform, tracking_number,
+                   amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (order_time, name, platform, tracking_number,
+                 amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
+            )
+            conn.commit()
+
+            # 新增了新名字的話：清掉快取，讓建議清單馬上更新
+            st.cache_data.clear()
+
+            st.toast("✅ 訂單已新增！")
+
 
     # --- 按下送出後的處理 ---
     if submit:
@@ -1208,6 +1202,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
