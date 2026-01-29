@@ -1,23 +1,35 @@
 import importlib.metadata as md
+import importlib
+import pkgutil
 import streamlit as st
 import mysql.connector
 
 st.write("streamlit-autosuggest dist version:", md.version("streamlit-autosuggest"))
 
+# 列出所有包含 suggest 關鍵字的模組（找真正 import 名）
+mods = [m.name for m in pkgutil.iter_modules()]
+cands = [x for x in mods if "suggest" in x.lower()]
+st.write("modules contains 'suggest':", cands)
+
 searchbar = None
-for modname in ["streamlit_autosuggest", "st_autosuggest", "streamlit_autosuggest.searchbar"]:
+last_err = None
+
+# 依序嘗試幾個常見名稱
+for modname in ["streamlit_autosuggest", "st_autosuggest", "autosuggest"]:
     try:
         m = importlib.import_module(modname)
-        # 常見是 module 內直接有 searchbar
         if hasattr(m, "searchbar"):
-            searchbar = getattr(m, "searchbar")
-            st.success(f"✅ autosuggest module loaded: {modname}")
+            searchbar = m.searchbar
+            st.success(f"✅ autosuggest loaded: {modname}")
             break
-    except Exception:
-        pass
+        else:
+            last_err = f"{modname} imported but no searchbar attr"
+    except Exception as e:
+        last_err = f"{modname} import error: {repr(e)}"
 
 if searchbar is None:
     st.warning("⚠️ autosuggest 模組載入失敗，暫時降級用一般輸入框")
+    st.code(str(last_err))
     
 import pandas as pd
 import time
@@ -1196,6 +1208,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
