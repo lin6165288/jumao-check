@@ -258,23 +258,17 @@ elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
     # 取歷史姓名清單（當建議）
-    name_options = get_customer_names(conn)  # 如果你已拿掉 cache，這行OK
-    # 若你用不收conn版：name_options = get_customer_names()
+    name_options = get_customer_names(conn)  # 或 get_customer_names()
+
+    # ✅ 用自訂 state，不綁 widget key，避免 StreamlitAPIException
+    if "add_name" not in st.session_state:
+        st.session_state["add_name"] = ""
 
     # ✅ 1) 客戶姓名（放在 form 外面，才能打字即時刷新建議）
-    name = st.text_input("客戶姓名", key="add_customer_name")
+    name = st.text_input("客戶姓名", value=st.session_state["add_name"])
+    st.session_state["add_name"] = name  # 同步輸入內容
 
-    # 中介 key：避免直接改寫 widget 綁定的 session_state
-    if "add_customer_pick" not in st.session_state:
-        st.session_state["add_customer_pick"] = ""
-
-    # 若剛剛點了建議，這次 run 先帶入，再 rerun 一次讓畫面更新
-    if st.session_state["add_customer_pick"]:
-        st.session_state["add_customer_name"] = st.session_state["add_customer_pick"]
-        st.session_state["add_customer_pick"] = ""
-        st.rerun()
-
-    q = (st.session_state.get("add_customer_name") or "").strip().lower()
+    q = (st.session_state["add_name"] or "").strip().lower()
     if q:
         suggestions = [n for n in name_options if n.lower().startswith(q)]
         suggestions = suggestions[:8]
@@ -282,11 +276,18 @@ elif menu == "🧾 新增訂單":
         if suggestions:
             st.caption("建議（點一下直接帶入）：")
             cols = st.columns(min(4, len(suggestions)))
-            for i, s in enumerate(suggestions):
-                if cols[i % len(cols)].button(s, key=f"namepick_{s}", use_container_width=True):
-                    st.session_state["add_customer_pick"] = s
-                    st.rerun()
 
+            def _pick(n):
+                st.session_state["add_name"] = n
+
+            for i, s in enumerate(suggestions):
+                cols[i % len(cols)].button(
+                    s,
+                    key=f"namepick_{s}",
+                    use_container_width=True,
+                    on_click=_pick,
+                    args=(s,)
+                )
 
     # ✅ 2) 其他欄位照舊放在 form 內
     with st.form("add_order_form", clear_on_submit=True):
@@ -303,8 +304,8 @@ elif menu == "🧾 新增訂單":
         submit = st.form_submit_button("✅ 新增訂單")
 
     if submit:
-        name = (st.session_state.get("add_customer_name") or "").strip()
-        if not name:
+        name_to_save = (st.session_state.get("add_name") or "").strip()
+        if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
             cursor.execute(
@@ -314,12 +315,19 @@ elif menu == "🧾 新增訂單":
                    amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
-                (order_time, name, platform, tracking_number,
+                (order_time, name_to_save, platform, tracking_number,
                  amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
             )
             conn.commit()
+
+            # 清 cache，讓新名字很快出現在建議清單
             st.cache_data.clear()
+
+            # 送出後把姓名也清掉（因為姓名在 form 外，不會被 clear_on_submit 清）
+            st.session_state["add_name"] = ""
+
             st.toast("✅ 訂單已新增！")
+
 
 
        
@@ -1187,6 +1195,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
