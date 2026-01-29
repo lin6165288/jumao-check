@@ -264,9 +264,18 @@ elif menu == "🧾 新增訂單":
     # ✅ 1) 客戶姓名（放在 form 外面，才能打字即時刷新建議）
     name = st.text_input("客戶姓名", key="add_customer_name")
 
-    q = (name or "").strip().lower()
+    # 中介 key：避免直接改寫 widget 綁定的 session_state
+    if "add_customer_pick" not in st.session_state:
+        st.session_state["add_customer_pick"] = ""
+
+    # 若剛剛點了建議，這次 run 先帶入，再 rerun 一次讓畫面更新
+    if st.session_state["add_customer_pick"]:
+        st.session_state["add_customer_name"] = st.session_state["add_customer_pick"]
+        st.session_state["add_customer_pick"] = ""
+        st.rerun()
+
+    q = (st.session_state.get("add_customer_name") or "").strip().lower()
     if q:
-        # 前綴匹配：打 x -> 徐xx
         suggestions = [n for n in name_options if n.lower().startswith(q)]
         suggestions = suggestions[:8]
 
@@ -275,8 +284,9 @@ elif menu == "🧾 新增訂單":
             cols = st.columns(min(4, len(suggestions)))
             for i, s in enumerate(suggestions):
                 if cols[i % len(cols)].button(s, key=f"namepick_{s}", use_container_width=True):
-                    st.session_state["add_customer_name"] = s
+                    st.session_state["add_customer_pick"] = s
                     st.rerun()
+
 
     # ✅ 2) 其他欄位照舊放在 form 內
     with st.form("add_order_form", clear_on_submit=True):
@@ -1177,6 +1187,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
