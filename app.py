@@ -1,5 +1,6 @@
 import streamlit as st
 import mysql.connector
+from streamlit_autosuggest import searchbar
 import pandas as pd
 import time
 from datetime import datetime
@@ -15,6 +16,17 @@ if "db_inited" not in st.session_state:
     init_db()
     st.session_state["db_inited"] = True
 
+
+# 建議：把取名字包成快取，避免每次 rerun 都查 DB
+@st.cache_data(ttl=300)  # 5 分鐘更新一次
+def get_customer_names(_conn):
+    df = pd.read_sql("""
+        SELECT DISTINCT customer_name
+        FROM orders
+        WHERE customer_name IS NOT NULL AND customer_name <> ''
+        ORDER BY customer_name
+    """, _conn)
+    return df["customer_name"].tolist()
 
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
@@ -246,41 +258,54 @@ if menu == "📋 訂單總表":
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
-    # --- 表單區塊 ---
-    with st.form("add_order_form"):
-        order_time      = st.date_input("下單日期", datetime.today())
-        name            = st.text_input("客戶姓名")
-        platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"])
-        tracking_number = st.text_input("包裹單號")
-        amount_rmb      = st.number_input("訂單金額（人民幣）", 0.0)
-        service_fee     = st.number_input("代購手續費（NT$）", 0.0)
-        weight_kg       = st.number_input("包裹公斤數", 0.0)
-        is_arrived      = st.checkbox("已到貨")
-        is_returned     = st.checkbox("已運回")
-        remarks         = st.text_area("備註")
+    # 取歷史姓名清單（當建議）
+    name_options = get_customer_names(conn)
 
-        # 送出按鈕
+    # --- 表單區塊 ---
+    with st.form("add_order_form", clear_on_submit=True):
+        order_time      = st.date_input("下單日期", datetime.today(), key="add_order_time")
+
+        # ✅ 改這行：同一欄位可建議、可自由輸入新名字
+        name = searchbar(
+            suggestions=name_options,
+            placeholder="輸入客戶姓名（打 a 會跳出 abc/add，可直接輸入新名字）",
+            key="add_customer_name"
+        )
+
+        platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
+        tracking_number = st.text_input("包裹單號", key="add_tracking_number")
+        amount_rmb      = st.number_input("訂單金額（人民幣）", min_value=0.0, value=0.0, step=1.0, key="add_amount_rmb")
+        service_fee     = st.number_input("代購手續費（NT$）", min_value=0.0, value=0.0, step=10.0, key="add_service_fee")
+        weight_kg       = st.number_input("包裹公斤數", min_value=0.0, value=0.0, step=0.1, key="add_weight_kg")
+        is_arrived      = st.checkbox("已到貨", key="add_is_arrived")
+        is_returned     = st.checkbox("已運回", key="add_is_returned")
+        remarks         = st.text_area("備註", key="add_remarks")
+
         submit = st.form_submit_button("✅ 新增訂單")
 
-    # --- 按下送出後的處理 (與 with 同層) ---
+    # --- 按下送出後的處理 ---
     if submit:
-        cursor.execute(
-            """
-            INSERT INTO orders 
-              (order_time, customer_name, platform, tracking_number,
-               amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (order_time, name, platform, tracking_number,
-             amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
-        )
-        conn.commit()
+        name = (name or "").strip()  # ✅ 避免 None
 
-        # 建立一個可 later clear 的 placeholder
-        notice = st.empty()
-        notice.success("✅ 訂單已新增！")
-        time.sleep(1)       # 顯示 1 秒
-        notice.empty()      # 清掉訊息
+        if not name:
+            st.error("⚠️ 請輸入客戶姓名")
+        else:
+            cursor.execute(
+                """
+                INSERT INTO orders 
+                  (order_time, customer_name, platform, tracking_number,
+                   amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (order_time, name, platform, tracking_number,
+                 amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
+            )
+            conn.commit()
+
+            # 新增了新名字的話：清掉快取，讓建議清單馬上更新
+            st.cache_data.clear()
+
+            st.toast("✅ 訂單已新增！")
 
        
 
@@ -1147,6 +1172,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
