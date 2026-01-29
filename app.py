@@ -15,6 +15,11 @@ if "db_inited" not in st.session_state:
     init_db()
     st.session_state["db_inited"] = True
 
+#確認小視窗
+def show_toast_once(key: str, msg: str, icon: str = "✅"):
+    if st.session_state.get(key):
+        st.toast(msg, icon=icon)
+        st.session_state[key] = False
 
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
@@ -336,6 +341,10 @@ elif menu == "🧾 新增訂單":
 elif menu == "✏️ 編輯訂單":
     st.subheader("✏️ 編輯訂單")
 
+    show_toast_once("toast_updated", "訂單已更新！", icon="✅")
+    show_toast_once("toast_deleted", "訂單已刪除！", icon="🗑")
+
+
     # —— 四個獨立搜尋欄位 + 日期篩選 —— 
     id_search       = st.text_input("🔢 搜索訂單編號")
     name_search     = st.text_input("👤 搜索客戶姓名")
@@ -439,17 +448,16 @@ elif menu == "✏️ 編輯訂單":
                 )
             )
             conn.commit()
-            
-            st.toast("✅ 訂單已更新！")
+            st.session_state["toast_updated"] = True
             st.rerun()
-
+            
         # ===== 刪除按鈕 =====
         confirm_del = st.checkbox("我確認要刪除這筆訂單")
-        if st.button("🗑 刪除此訂單", disabled=not confirm_del):
+        if st.button("🗑 刪除此訂單"):
             cursor.execute("DELETE FROM orders WHERE order_id = %s", (edit_id,))
             conn.commit()
-            st.toast("🗑 訂單已刪除！")
-            st.rerun()  # 刪掉後刷新，避免 selectbox 還選到已刪的 id
+            st.session_state["toast_deleted"] = True
+            st.rerun()
 
 
 # 4. 搜尋訂單
@@ -1196,6 +1204,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
