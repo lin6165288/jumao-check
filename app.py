@@ -270,8 +270,8 @@ elif menu == "🧾 新增訂單":
     # ✅ 第一次進來時，初始化表單欄位（避免沒有 value 參數後出現空值）
     defaults = {
         "add_tracking_number": "",
-        "add_amount_rmb_str": "",      # ✅ 改成字串
-        "add_service_fee_str": "",     # ✅ 改成字串
+        "add_amount_rmb": 0.0,
+        "add_service_fee": 0.0,
         "add_weight_kg": 0.0,
         "add_is_arrived": False,
         "add_is_returned": False,
@@ -291,8 +291,8 @@ elif menu == "🧾 新增訂單":
     # ✅ 若上一輪要求清空「其他欄位」（日期/平台除外）：這一輪一開始先清（要在 form widgets 之前）
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
-        st.session_state["add_amount_rmb_str"] = ""     # ✅ 清字串
-        st.session_state["add_service_fee_str"] = ""    # ✅ 清字串
+        st.session_state["add_amount_rmb"] = 0.0
+        st.session_state["add_service_fee"] = 0.0
         st.session_state["add_weight_kg"] = 0.0
         st.session_state["add_is_arrived"] = False
         st.session_state["add_is_returned"] = False
@@ -345,7 +345,7 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-    # ✅ 其他欄位照舊放在 form 內（clear_on_submit 關掉，改手動清欄位）
+    # ✅ 其他欄位照舊放在 form 內（clear_on_submit 關掉，改成手動清欄位）
     with st.form("add_order_form", clear_on_submit=False):
         # ✅ 日期/平台會延續（不主動清它們）
         order_time = st.date_input("下單日期", key="add_order_time")
@@ -357,11 +357,8 @@ elif menu == "🧾 新增訂單":
 
         # ✅ 其他欄位送出後清空（用 clear_add_fields 旗標）
         tracking_number = st.text_input("包裹單號", key="add_tracking_number")
-
-        # ✅ 金額/手續費改用文字輸入，避免 Enter 造成另一欄沒 commit
-        amount_rmb_str = st.text_input("訂單金額（人民幣）", key="add_amount_rmb_str", placeholder="例如：123 或 123.5")
-        service_fee_str = st.text_input("代購手續費（NT$）", key="add_service_fee_str", placeholder="例如：20 或 0")
-
+        amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
+        service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
         weight_kg = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
         is_arrived = st.checkbox("已到貨", key="add_is_arrived")
         is_returned = st.checkbox("已運回", key="add_is_returned")
@@ -369,24 +366,56 @@ elif menu == "🧾 新增訂單":
 
         submit = st.form_submit_button("✅ 新增訂單")
 
+        # ✅ Enter 也能送出：先 blur 讓 number_input 值寫回，再 click submit
+        st.markdown(
+            """
+            <script>
+            (function () {
+              const forms = window.parent.document.querySelectorAll('form');
+              forms.forEach(form => {
+                if (form.dataset.enterSubmitFixed) return;
+                form.dataset.enterSubmitFixed = "1";
+
+                form.addEventListener('keydown', function(e) {
+                  if (e.key !== 'Enter') return;
+
+                  // 只在輸入框內按 Enter 才接管（避免按鈕本身 Enter 被干擾）
+                  const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
+                  if (!["input","textarea","select"].includes(tag)) return;
+
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  // 先讓目前欄位失焦 -> 觸發 Streamlit 送值
+                  try {
+                    if (document.activeElement) document.activeElement.blur();
+                  } catch (_) {}
+
+                  // 再讓表單內全部 input 都 blur（更保險）
+                  const inputs = form.querySelectorAll('input, textarea, select');
+                  inputs.forEach(el => { try { el.blur(); } catch(_) {} });
+
+                  // 稍微延遲後點擊 submit（等值寫回）
+                  setTimeout(() => {
+                    const btn = form.querySelector('button[type="submit"]');
+                    if (btn) btn.click();
+                  }, 80);
+                }, true);
+              });
+            })();
+            </script>
+            """,
+            unsafe_allow_html=True
+        )
+
     if submit:
         name_to_save = (st.session_state.get("add_name") or "").strip()
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
-            # ✅ 送出時再把字串轉成數字（防呆）
-            def _to_float(s):
-                s = (s or "").strip()
-                if s == "":
-                    return 0.0
-                return float(s)
-
-            try:
-                amount_rmb = _to_float(amount_rmb_str)
-                service_fee = _to_float(service_fee_str)
-            except ValueError:
-                st.error("⚠️ 訂單金額 / 手續費請輸入數字（例如 123 或 123.5）")
-                st.stop()
+            # ✅ 雙保險：送出時用 session_state 重新取值（避免某次變數沒更新）
+            amount_rmb_db = float(st.session_state.get("add_amount_rmb", 0.0))
+            service_fee_db = float(st.session_state.get("add_service_fee", 0.0))
 
             cursor.execute(
                 """
@@ -396,7 +425,7 @@ elif menu == "🧾 新增訂單":
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (order_time, name_to_save, platform, tracking_number,
-                 amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
+                 amount_rmb_db, weight_kg, is_arrived, is_returned, service_fee_db, remarks)
             )
             conn.commit()
 
@@ -1283,6 +1312,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
