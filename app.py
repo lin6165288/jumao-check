@@ -260,6 +260,12 @@ if menu == "📋 訂單總表":
 # 2. 新增訂單
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
+
+    # ✅ 進頁面先顯示「上一輪」存的 toast（避免被 rerun 吃掉）
+    if st.session_state.get("flash_toast"):
+        st.toast(st.session_state["flash_toast"])
+        st.session_state["flash_toast"] = None
+
     name_options = get_customer_names(conn)
 
     # 讓姓名/建議看起來是同一組
@@ -306,9 +312,7 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-
-
-    # ✅ 2) 其他欄位照舊放在 form 內
+    # ✅ 其他欄位照舊放在 form 內
     with st.form("add_order_form", clear_on_submit=True):
         order_time      = st.date_input("下單日期", datetime.today(), key="add_order_time")
         platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
@@ -342,10 +346,12 @@ elif menu == "🧾 新增訂單":
             # 清 cache，讓新名字很快出現在建議清單
             st.cache_data.clear()
 
+            # ✅ 依設定決定是否清空姓名
             if not st.session_state.get("keep_last_name", True):
                 st.session_state["add_name"] = ""
 
-            st.toast("✅ 訂單已新增！")
+            # ✅ 用 flash_toast + rerun，確保右上角一定看得到
+            st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
 
 
@@ -1220,6 +1226,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
