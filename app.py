@@ -266,23 +266,28 @@ elif menu == "🧾 新增訂單":
     with st.container(border=True):
         st.markdown("#### 客戶姓名")
 
-        if "add_name" not in st.session_state:
-            st.session_state["add_name"] = ""
+        # ✅ 是否保留上一筆姓名（預設 True）
+        if "keep_last_name" not in st.session_state:
+            st.session_state["keep_last_name"] = True
 
-        # 姓名輸入（不綁 key，避免 session_state 寫入錯誤）
-        name = st.text_input(
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            st.toggle("新增後保留此客戶姓名", key="keep_last_name")
+        with c2:
+            if st.button("🧹 清空姓名", use_container_width=True):
+                st.session_state["add_name"] = ""
+                st.rerun()
+
+        st.text_input(
             "輸入姓名（打字會出現建議）",
-            value=st.session_state["add_name"],
+            key="add_name",
             label_visibility="collapsed",
             placeholder="請輸入客戶名稱"
         )
-        st.session_state["add_name"] = name
 
-        q = (st.session_state["add_name"] or "").strip().lower()
+        q = (st.session_state.get("add_name") or "").strip().lower()
         if q:
-            suggestions = [n for n in name_options if n.lower().startswith(q)]
-            suggestions = suggestions[:8]
-
+            suggestions = [n for n in name_options if n.lower().startswith(q)][:8]
             if suggestions:
                 st.caption("建議（點一下直接帶入）")
                 cols = st.columns(min(4, len(suggestions)))
@@ -293,13 +298,14 @@ elif menu == "🧾 新增訂單":
                 for i, s in enumerate(suggestions):
                     cols[i % len(cols)].button(
                         s,
-                        key=f"namepick_{s}",
+                        key=f"namepick_{i}",
                         use_container_width=True,
                         on_click=_pick,
                         args=(s,)
                     )
         else:
             st.caption("請輸入任一字母/文字")
+
 
 
     # ✅ 2) 其他欄位照舊放在 form 內
@@ -336,10 +342,12 @@ elif menu == "🧾 新增訂單":
             # 清 cache，讓新名字很快出現在建議清單
             st.cache_data.clear()
 
-            # 送出後把姓名也清掉（因為姓名在 form 外，不會被 clear_on_submit 清）
-            st.session_state["add_name"] = ""
+            if not st.session_state.get("keep_last_name", True):
+                st.session_state["add_name"] = ""
 
             st.toast("✅ 訂單已新增！")
+            st.rerun()
+
 
 
 
@@ -1212,6 +1220,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
