@@ -266,6 +266,11 @@ elif menu == "🧾 新增訂單":
         st.toast(st.session_state["flash_toast"])
         st.session_state["flash_toast"] = None
 
+    # ✅ 若上一輪要求清空姓名：這一輪一開始先清（一定要在 text_input 之前）
+    if st.session_state.get("clear_add_name"):
+        st.session_state["add_name"] = ""
+        st.session_state["clear_add_name"] = False
+
     name_options = get_customer_names(conn)
 
     # 讓姓名/建議看起來是同一組
@@ -281,7 +286,8 @@ elif menu == "🧾 新增訂單":
             st.toggle("新增後保留此客戶姓名", key="keep_last_name")
         with c2:
             if st.button("🧹 清空姓名", use_container_width=True):
-                st.session_state["add_name"] = ""
+                # ✅ 這裡也不要直接改 add_name（避免 widget 已建立後修改）
+                st.session_state["clear_add_name"] = True
                 st.rerun()
 
         st.text_input(
@@ -346,15 +352,13 @@ elif menu == "🧾 新增訂單":
             # 清 cache，讓新名字很快出現在建議清單
             st.cache_data.clear()
 
-            # ✅ 依設定決定是否清空姓名
+            # ✅ 依設定決定是否清空姓名（改用旗標，避免直接改 add_name）
             if not st.session_state.get("keep_last_name", True):
-                st.session_state["add_name"] = ""
+                st.session_state["clear_add_name"] = True
 
             # ✅ 用 flash_toast + rerun，確保右上角一定看得到
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
-
-
 
 
        
@@ -1226,6 +1230,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
