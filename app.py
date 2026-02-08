@@ -370,53 +370,80 @@ elif menu == "🧾 新增訂單":
     # ✅ 右下角浮動按鈕：複製一顆送出按鈕到右下角（點它=點表單 submit）
     st.markdown(
         """
-        <style>
-          .block-container { padding-bottom: 6rem; }
-          #floating-submit {
-            position: fixed;
-            right: 24px;
-            bottom: 24px;
-            z-index: 9999;
-          }
-          #floating-submit button{
-            padding: 0.8rem 1.1rem;
-            border-radius: 999px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.18);
-            width: auto;
-          }
-          @media (max-width: 640px){
-            #floating-submit{ right: 12px; bottom: 12px; }
-          }
-        </style>
-
-        <div id="floating-submit"></div>
-
         <script>
         (function() {
-          // 每次 rerun 都會重跑，避免一直重複塞按鈕
           const doc = window.parent.document;
-          const host = doc.querySelector('#floating-submit');
-          if (!host) return;
 
-          // 找到本頁第一個 form 的 submit（此頁只有新增訂單的 form 時最穩）
-          const submitBtn = doc.querySelector('form button[type="submit"]');
-          if (!submitBtn) return;
+          // 1) 建立/取得右下角浮動容器（放在 parent document）
+          let host = doc.getElementById("floating-submit");
+          if (!host) {
+            host = doc.createElement("div");
+            host.id = "floating-submit";
+            doc.body.appendChild(host);
+          }
 
-          // 若已經建立過就不重建
-          if (host.dataset.mounted === "1") return;
-          host.dataset.mounted = "1";
+          // 2) 套樣式（只做一次）
+          if (!doc.getElementById("floating-submit-style")) {
+            const style = doc.createElement("style");
+            style.id = "floating-submit-style";
+            style.innerHTML = `
+              .block-container { padding-bottom: 6rem; }
+              #floating-submit {
+                position: fixed;
+                right: 24px;
+                bottom: 24px;
+                z-index: 999999;
+              }
+              #floating-submit button{
+                padding: 0.8rem 1.1rem;
+                border-radius: 999px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+                width: auto !important;
+              }
+              @media (max-width: 640px){
+                #floating-submit{ right: 12px; bottom: 12px; }
+              }
+            `;
+            doc.head.appendChild(style);
+          }
 
-          const floatBtn = submitBtn.cloneNode(true);
-          floatBtn.style.width = "auto";
-          floatBtn.onclick = (e) => { e.preventDefault(); submitBtn.click(); };
+          // 3) 找到「新增訂單」這頁的 submit 按鈕（用文字匹配，避免抓錯別的 form）
+          function findSubmitButton() {
+            const buttons = Array.from(doc.querySelectorAll('form button[type="submit"]'));
+            // 找到文字包含「新增訂單」的那顆
+            return buttons.find(b => (b.innerText || "").includes("新增訂單")) || null;
+          }
 
-          host.innerHTML = "";
-          host.appendChild(floatBtn);
+          function mount() {
+            const btn = findSubmitButton();
+            if (!btn) return false;
+
+            // 避免重複塞
+            if (host.dataset.mounted === "1") return true;
+            host.dataset.mounted = "1";
+
+            const floatBtn = btn.cloneNode(true);
+            floatBtn.style.width = "auto";
+            floatBtn.onclick = (e) => { e.preventDefault(); btn.click(); };
+
+            host.innerHTML = "";
+            host.appendChild(floatBtn);
+            return true;
+          }
+
+          // 4) Streamlit 可能晚點才渲染，重試幾次
+          let tries = 0;
+          const timer = setInterval(() => {
+            tries += 1;
+            if (mount() || tries > 40) clearInterval(timer);
+          }, 150);
+
         })();
         </script>
         """,
         unsafe_allow_html=True
     )
+
 
     if submit:
         name_to_save = (st.session_state.get("add_name") or "").strip()
@@ -1323,6 +1350,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
