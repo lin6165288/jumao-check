@@ -345,35 +345,6 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-    # ✅ 右下角固定浮動「新增訂單」按鈕（只影響本頁的 form submit）
-    st.markdown(
-        """
-        <style>
-          /* 頁面底部留白，避免內容被浮動按鈕擋住 */
-          .block-container { padding-bottom: 6rem; }
-
-          /* 將本頁 stForm 的 submit button 固定到右下角 */
-          div[data-testid="stForm"] button[type="submit"]{
-              position: fixed !important;
-              right: 24px !important;
-              bottom: 24px !important;
-              z-index: 9999 !important;
-              padding: 0.8rem 1.1rem !important;
-              border-radius: 999px !important;
-              box-shadow: 0 10px 25px rgba(0,0,0,0.18) !important;
-          }
-
-          @media (max-width: 640px){
-            div[data-testid="stForm"] button[type="submit"]{
-              right: 12px !important;
-              bottom: 12px !important;
-            }
-          }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
     # ✅ 其他欄位照舊放在 form 內（clear_on_submit 關掉，改成手動清欄位）
     with st.form("add_order_form", clear_on_submit=False):
         # ✅ 日期/平台會延續（不主動清它們）
@@ -393,8 +364,59 @@ elif menu == "🧾 新增訂單":
         is_returned = st.checkbox("已運回", key="add_is_returned")
         remarks = st.text_area("備註", key="add_remarks")
 
-        # ✅ 只靠這顆按鈕送出（Enter 不管它）
-        submit = st.form_submit_button("✅ 新增訂單")
+        # ✅ 原本 submit 照留（不管你在頁面哪裡，都能用浮動按鈕點它）
+        submit = st.form_submit_button("✅ 新增訂單", use_container_width=True)
+
+    # ✅ 右下角浮動按鈕：複製一顆送出按鈕到右下角（點它=點表單 submit）
+    st.markdown(
+        """
+        <style>
+          .block-container { padding-bottom: 6rem; }
+          #floating-submit {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 9999;
+          }
+          #floating-submit button{
+            padding: 0.8rem 1.1rem;
+            border-radius: 999px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+            width: auto;
+          }
+          @media (max-width: 640px){
+            #floating-submit{ right: 12px; bottom: 12px; }
+          }
+        </style>
+
+        <div id="floating-submit"></div>
+
+        <script>
+        (function() {
+          // 每次 rerun 都會重跑，避免一直重複塞按鈕
+          const doc = window.parent.document;
+          const host = doc.querySelector('#floating-submit');
+          if (!host) return;
+
+          // 找到本頁第一個 form 的 submit（此頁只有新增訂單的 form 時最穩）
+          const submitBtn = doc.querySelector('form button[type="submit"]');
+          if (!submitBtn) return;
+
+          // 若已經建立過就不重建
+          if (host.dataset.mounted === "1") return;
+          host.dataset.mounted = "1";
+
+          const floatBtn = submitBtn.cloneNode(true);
+          floatBtn.style.width = "auto";
+          floatBtn.onclick = (e) => { e.preventDefault(); submitBtn.click(); };
+
+          host.innerHTML = "";
+          host.appendChild(floatBtn);
+        })();
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
 
     if submit:
         name_to_save = (st.session_state.get("add_name") or "").strip()
@@ -430,6 +452,7 @@ elif menu == "🧾 新增訂單":
             # ✅ 用 flash_toast + rerun，確保右上角一定看得到
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
+
 
 
 
@@ -1300,6 +1323,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
