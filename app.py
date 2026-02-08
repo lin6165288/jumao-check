@@ -267,7 +267,7 @@ elif menu == "🧾 新增訂單":
         st.toast(st.session_state["flash_toast"])
         st.session_state["flash_toast"] = None
 
-    # ✅ 第一次進來時，初始化表單欄位（避免沒有 value 參數後出現空值）
+    # ✅ 第一次進來時，初始化表單欄位
     defaults = {
         "add_tracking_number": "",
         "add_amount_rmb": 0.0,
@@ -283,12 +283,12 @@ elif menu == "🧾 新增訂單":
     st.session_state.setdefault("add_order_time", datetime.today().date())
     st.session_state.setdefault("add_platform", "集運")
 
-    # ✅ 若上一輪要求清空姓名：這一輪一開始先清（一定要在 text_input 之前）
+    # ✅ 若上一輪要求清空姓名
     if st.session_state.get("clear_add_name"):
         st.session_state["add_name"] = ""
         st.session_state["clear_add_name"] = False
 
-    # ✅ 若上一輪要求清空「其他欄位」（日期/平台除外）：這一輪一開始先清（要在 form widgets 之前）
+    # ✅ 若上一輪要求清空「其他欄位」（日期/平台除外）
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
         st.session_state["add_amount_rmb"] = 0.0
@@ -298,6 +298,10 @@ elif menu == "🧾 新增訂單":
         st.session_state["add_is_returned"] = False
         st.session_state["add_remarks"] = ""
         st.session_state["clear_add_fields"] = False
+
+    # ✅ 側邊欄固定快捷新增（不用滑到底）
+    quick_submit = st.sidebar.button("✅ 快捷新增訂單", use_container_width=True)
+    st.sidebar.caption("不用滑到底，按這顆就會新增（沿用目前表單內容）")
 
     name_options = get_customer_names(conn)
 
@@ -347,112 +351,40 @@ elif menu == "🧾 新增訂單":
 
     # ✅ 其他欄位照舊放在 form 內（clear_on_submit 關掉，改成手動清欄位）
     with st.form("add_order_form", clear_on_submit=False):
-        # ✅ 日期/平台會延續（不主動清它們）
-        order_time = st.date_input("下單日期", key="add_order_time")
-        platform = st.selectbox(
+        st.date_input("下單日期", key="add_order_time")
+        st.selectbox(
             "下單平台",
             ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"],
             key="add_platform"
         )
 
-        # ✅ 其他欄位送出後清空（用 clear_add_fields 旗標）
-        tracking_number = st.text_input("包裹單號", key="add_tracking_number")
-        amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
-        service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
-        weight_kg = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
-        is_arrived = st.checkbox("已到貨", key="add_is_arrived")
-        is_returned = st.checkbox("已運回", key="add_is_returned")
-        remarks = st.text_area("備註", key="add_remarks")
+        st.text_input("包裹單號", key="add_tracking_number")
+        st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
+        st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
+        st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
+        st.checkbox("已到貨", key="add_is_arrived")
+        st.checkbox("已運回", key="add_is_returned")
+        st.text_area("備註", key="add_remarks")
 
-        # ✅ 原本 submit 照留（不管你在頁面哪裡，都能用浮動按鈕點它）
+        # 底部按鈕保留（滑到底也能按），但不再依賴它方便操作
         submit = st.form_submit_button("✅ 新增訂單", use_container_width=True)
 
-    # ✅ 右下角浮動按鈕：複製一顆送出按鈕到右下角（點它=點表單 submit）
-    st.markdown(
-        """
-        <script>
-        (function() {
-          const doc = window.parent.document;
-
-          // 1) 建立/取得右下角浮動容器（放在 parent document）
-          let host = doc.getElementById("floating-submit");
-          if (!host) {
-            host = doc.createElement("div");
-            host.id = "floating-submit";
-            doc.body.appendChild(host);
-          }
-
-          // 2) 套樣式（只做一次）
-          if (!doc.getElementById("floating-submit-style")) {
-            const style = doc.createElement("style");
-            style.id = "floating-submit-style";
-            style.innerHTML = `
-              .block-container { padding-bottom: 6rem; }
-              #floating-submit {
-                position: fixed;
-                right: 24px;
-                bottom: 24px;
-                z-index: 999999;
-              }
-              #floating-submit button{
-                padding: 0.8rem 1.1rem;
-                border-radius: 999px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.18);
-                width: auto !important;
-              }
-              @media (max-width: 640px){
-                #floating-submit{ right: 12px; bottom: 12px; }
-              }
-            `;
-            doc.head.appendChild(style);
-          }
-
-          // 3) 找到「新增訂單」這頁的 submit 按鈕（用文字匹配，避免抓錯別的 form）
-          function findSubmitButton() {
-            const buttons = Array.from(doc.querySelectorAll('form button[type="submit"]'));
-            // 找到文字包含「新增訂單」的那顆
-            return buttons.find(b => (b.innerText || "").includes("新增訂單")) || null;
-          }
-
-          function mount() {
-            const btn = findSubmitButton();
-            if (!btn) return false;
-
-            // 避免重複塞
-            if (host.dataset.mounted === "1") return true;
-            host.dataset.mounted = "1";
-
-            const floatBtn = btn.cloneNode(true);
-            floatBtn.style.width = "auto";
-            floatBtn.onclick = (e) => { e.preventDefault(); btn.click(); };
-
-            host.innerHTML = "";
-            host.appendChild(floatBtn);
-            return true;
-          }
-
-          // 4) Streamlit 可能晚點才渲染，重試幾次
-          let tries = 0;
-          const timer = setInterval(() => {
-            tries += 1;
-            if (mount() || tries > 40) clearInterval(timer);
-          }, 150);
-
-        })();
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-    if submit:
+    # ✅ 兩顆按鈕都能新增：底部 submit 或 側邊欄 quick_submit
+    if submit or quick_submit:
         name_to_save = (st.session_state.get("add_name") or "").strip()
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
-            # ✅ 送出時用 session_state 取值（穩）
+            # ✅ 統一從 session_state 取值（側邊欄按鈕也能新增）
+            order_time = st.session_state.get("add_order_time")
+            platform = st.session_state.get("add_platform")
+            tracking_number = st.session_state.get("add_tracking_number", "")
             amount_rmb_db = float(st.session_state.get("add_amount_rmb", 0.0))
             service_fee_db = float(st.session_state.get("add_service_fee", 0.0))
+            weight_kg = float(st.session_state.get("add_weight_kg", 0.0))
+            is_arrived = bool(st.session_state.get("add_is_arrived", False))
+            is_returned = bool(st.session_state.get("add_is_returned", False))
+            remarks = st.session_state.get("add_remarks", "")
 
             cursor.execute(
                 """
@@ -466,20 +398,17 @@ elif menu == "🧾 新增訂單":
             )
             conn.commit()
 
-            # 清 cache，讓新名字很快出現在建議清單
             st.cache_data.clear()
 
-            # ✅ 依設定決定是否清空姓名（用旗標，避免直接改 add_name）
+            # ✅ 依設定決定是否清空姓名
             if not st.session_state.get("keep_last_name", True):
                 st.session_state["clear_add_name"] = True
 
             # ✅ 清空「其他欄位」（日期/平台保留）
             st.session_state["clear_add_fields"] = True
 
-            # ✅ 用 flash_toast + rerun，確保右上角一定看得到
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
-
 
 
 
@@ -1350,6 +1279,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
