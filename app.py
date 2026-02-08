@@ -271,6 +271,14 @@ elif menu == "🧾 新增訂單":
         st.session_state["add_name"] = ""
         st.session_state["clear_add_name"] = False
 
+    # ✅ 日期預設：今天（只在第一次進來時設定一次）
+    if "add_order_time" not in st.session_state:
+        st.session_state["add_order_time"] = datetime.today().date()
+
+    # ✅ 平台預設：集運（只在第一次進來時設定一次）
+    if "add_platform" not in st.session_state:
+        st.session_state["add_platform"] = "集運"
+
     name_options = get_customer_names(conn)
 
     # 讓姓名/建議看起來是同一組
@@ -286,7 +294,6 @@ elif menu == "🧾 新增訂單":
             st.toggle("新增後保留此客戶姓名", key="keep_last_name")
         with c2:
             if st.button("🧹 清空姓名", use_container_width=True):
-                # ✅ 這裡也不要直接改 add_name（避免 widget 已建立後修改）
                 st.session_state["clear_add_name"] = True
                 st.rerun()
 
@@ -318,10 +325,16 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-    # ✅ 其他欄位照舊放在 form 內
+    # ✅ 日期與平台：放在 form 外（才不會被 clear_on_submit 清掉）
+    order_time = st.date_input("下單日期", key="add_order_time")
+    platform = st.selectbox(
+        "下單平台",
+        ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"],
+        key="add_platform"
+    )
+
+    # ✅ 其他欄位照舊放在 form 內（會被 clear_on_submit 清空）
     with st.form("add_order_form", clear_on_submit=True):
-        order_time      = st.date_input("下單日期", datetime.today(), key="add_order_time")
-        platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
         tracking_number = st.text_input("包裹單號", key="add_tracking_number")
         amount_rmb      = st.number_input("訂單金額（人民幣）", min_value=0.0, value=0.0, step=1.0, key="add_amount_rmb")
         service_fee     = st.number_input("代購手續費（NT$）", min_value=0.0, value=0.0, step=10.0, key="add_service_fee")
@@ -352,14 +365,13 @@ elif menu == "🧾 新增訂單":
             # 清 cache，讓新名字很快出現在建議清單
             st.cache_data.clear()
 
-            # ✅ 依設定決定是否清空姓名（改用旗標，避免直接改 add_name）
+            # ✅ 依設定決定是否清空姓名（用旗標，避免直接改 add_name）
             if not st.session_state.get("keep_last_name", True):
                 st.session_state["clear_add_name"] = True
 
             # ✅ 用 flash_toast + rerun，確保右上角一定看得到
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
-
 
        
 
@@ -1230,6 +1242,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
