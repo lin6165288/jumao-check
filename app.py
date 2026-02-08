@@ -345,6 +345,35 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
+    # ✅ 右下角固定浮動「新增訂單」按鈕（只影響本頁的 form submit）
+    st.markdown(
+        """
+        <style>
+          /* 頁面底部留白，避免內容被浮動按鈕擋住 */
+          .block-container { padding-bottom: 6rem; }
+
+          /* 將本頁 stForm 的 submit button 固定到右下角 */
+          div[data-testid="stForm"] button[type="submit"]{
+              position: fixed !important;
+              right: 24px !important;
+              bottom: 24px !important;
+              z-index: 9999 !important;
+              padding: 0.8rem 1.1rem !important;
+              border-radius: 999px !important;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.18) !important;
+          }
+
+          @media (max-width: 640px){
+            div[data-testid="stForm"] button[type="submit"]{
+              right: 12px !important;
+              bottom: 12px !important;
+            }
+          }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     # ✅ 其他欄位照舊放在 form 內（clear_on_submit 關掉，改成手動清欄位）
     with st.form("add_order_form", clear_on_submit=False):
         # ✅ 日期/平台會延續（不主動清它們）
@@ -364,56 +393,15 @@ elif menu == "🧾 新增訂單":
         is_returned = st.checkbox("已運回", key="add_is_returned")
         remarks = st.text_area("備註", key="add_remarks")
 
+        # ✅ 只靠這顆按鈕送出（Enter 不管它）
         submit = st.form_submit_button("✅ 新增訂單")
-
-        # ✅ Enter 也能送出：先 blur 讓 number_input 值寫回，再 click submit
-        st.markdown(
-            """
-            <script>
-            (function () {
-              const forms = window.parent.document.querySelectorAll('form');
-              forms.forEach(form => {
-                if (form.dataset.enterSubmitFixed) return;
-                form.dataset.enterSubmitFixed = "1";
-
-                form.addEventListener('keydown', function(e) {
-                  if (e.key !== 'Enter') return;
-
-                  // 只在輸入框內按 Enter 才接管（避免按鈕本身 Enter 被干擾）
-                  const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
-                  if (!["input","textarea","select"].includes(tag)) return;
-
-                  e.preventDefault();
-                  e.stopPropagation();
-
-                  // 先讓目前欄位失焦 -> 觸發 Streamlit 送值
-                  try {
-                    if (document.activeElement) document.activeElement.blur();
-                  } catch (_) {}
-
-                  // 再讓表單內全部 input 都 blur（更保險）
-                  const inputs = form.querySelectorAll('input, textarea, select');
-                  inputs.forEach(el => { try { el.blur(); } catch(_) {} });
-
-                  // 稍微延遲後點擊 submit（等值寫回）
-                  setTimeout(() => {
-                    const btn = form.querySelector('button[type="submit"]');
-                    if (btn) btn.click();
-                  }, 80);
-                }, true);
-              });
-            })();
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
 
     if submit:
         name_to_save = (st.session_state.get("add_name") or "").strip()
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
-            # ✅ 雙保險：送出時用 session_state 重新取值（避免某次變數沒更新）
+            # ✅ 送出時用 session_state 取值（穩）
             amount_rmb_db = float(st.session_state.get("add_amount_rmb", 0.0))
             service_fee_db = float(st.session_state.get("add_service_fee", 0.0))
 
@@ -443,7 +431,6 @@ elif menu == "🧾 新增訂單":
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
 
-       
 
 # 3. 編輯訂單
 elif menu == "✏️ 編輯訂單":
@@ -1312,6 +1299,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
