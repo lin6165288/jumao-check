@@ -258,6 +258,7 @@ if menu == "📋 訂單總表":
 
 
 # 2. 新增訂單
+# 2. 新增訂單
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
@@ -269,8 +270,8 @@ elif menu == "🧾 新增訂單":
     # ✅ 第一次進來時，初始化表單欄位（避免沒有 value 參數後出現空值）
     defaults = {
         "add_tracking_number": "",
-        "add_amount_rmb": 0.0,
-        "add_service_fee": 0.0,
+        "add_amount_rmb_str": "",      # ✅ 改成字串
+        "add_service_fee_str": "",     # ✅ 改成字串
         "add_weight_kg": 0.0,
         "add_is_arrived": False,
         "add_is_returned": False,
@@ -282,7 +283,6 @@ elif menu == "🧾 新增訂單":
     st.session_state.setdefault("add_order_time", datetime.today().date())
     st.session_state.setdefault("add_platform", "集運")
 
-
     # ✅ 若上一輪要求清空姓名：這一輪一開始先清（一定要在 text_input 之前）
     if st.session_state.get("clear_add_name"):
         st.session_state["add_name"] = ""
@@ -291,8 +291,8 @@ elif menu == "🧾 新增訂單":
     # ✅ 若上一輪要求清空「其他欄位」（日期/平台除外）：這一輪一開始先清（要在 form widgets 之前）
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
-        st.session_state["add_amount_rmb"] = 0.0
-        st.session_state["add_service_fee"] = 0.0
+        st.session_state["add_amount_rmb_str"] = ""     # ✅ 清字串
+        st.session_state["add_service_fee_str"] = ""    # ✅ 清字串
         st.session_state["add_weight_kg"] = 0.0
         st.session_state["add_is_arrived"] = False
         st.session_state["add_is_returned"] = False
@@ -345,20 +345,27 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-    # ✅ 其他欄位照舊放在 form 內（但 clear_on_submit 要關掉，改成手動清欄位）
+    # ✅ 其他欄位照舊放在 form 內（clear_on_submit 關掉，改手動清欄位）
     with st.form("add_order_form", clear_on_submit=False):
         # ✅ 日期/平台會延續（不主動清它們）
         order_time = st.date_input("下單日期", key="add_order_time")
-        platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
+        platform = st.selectbox(
+            "下單平台",
+            ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"],
+            key="add_platform"
+        )
 
         # ✅ 其他欄位送出後清空（用 clear_add_fields 旗標）
         tracking_number = st.text_input("包裹單號", key="add_tracking_number")
-        amount_rmb  = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
-        service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
-        weight_kg   = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
-        is_arrived      = st.checkbox("已到貨", key="add_is_arrived")
-        is_returned     = st.checkbox("已運回", key="add_is_returned")
-        remarks         = st.text_area("備註", key="add_remarks")
+
+        # ✅ 金額/手續費改用文字輸入，避免 Enter 造成另一欄沒 commit
+        amount_rmb_str = st.text_input("訂單金額（人民幣）", key="add_amount_rmb_str", placeholder="例如：123 或 123.5")
+        service_fee_str = st.text_input("代購手續費（NT$）", key="add_service_fee_str", placeholder="例如：20 或 0")
+
+        weight_kg = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
+        is_arrived = st.checkbox("已到貨", key="add_is_arrived")
+        is_returned = st.checkbox("已運回", key="add_is_returned")
+        remarks = st.text_area("備註", key="add_remarks")
 
         submit = st.form_submit_button("✅ 新增訂單")
 
@@ -367,6 +374,20 @@ elif menu == "🧾 新增訂單":
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
+            # ✅ 送出時再把字串轉成數字（防呆）
+            def _to_float(s):
+                s = (s or "").strip()
+                if s == "":
+                    return 0.0
+                return float(s)
+
+            try:
+                amount_rmb = _to_float(amount_rmb_str)
+                service_fee = _to_float(service_fee_str)
+            except ValueError:
+                st.error("⚠️ 訂單金額 / 手續費請輸入數字（例如 123 或 123.5）")
+                st.stop()
+
             cursor.execute(
                 """
                 INSERT INTO orders 
@@ -392,7 +413,6 @@ elif menu == "🧾 新增訂單":
             # ✅ 用 flash_toast + rerun，確保右上角一定看得到
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
-
 
        
 
@@ -1263,6 +1283,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
