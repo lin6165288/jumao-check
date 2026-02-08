@@ -299,9 +299,9 @@ elif menu == "🧾 新增訂單":
         st.session_state["add_remarks"] = ""
         st.session_state["clear_add_fields"] = False
 
-    # ✅ 側邊欄固定快捷新增（不用滑到底）
-    quick_submit = st.sidebar.button("✅ 快捷新增訂單", use_container_width=True)
-    st.sidebar.caption("不用滑到底，按這顆就會新增（沿用目前表單內容）")
+    # ✅ 左側固定快捷新增（不用滑到底）
+    quick_submit = st.sidebar.button("✅ 新增訂單", use_container_width=True)
+    st.sidebar.caption("按這顆就會新增（使用目前畫面上的輸入值）")
 
     name_options = get_customer_names(conn)
 
@@ -310,8 +310,7 @@ elif menu == "🧾 新增訂單":
         st.markdown("#### 客戶姓名")
 
         # ✅ 是否保留上一筆姓名（預設 True）
-        if "keep_last_name" not in st.session_state:
-            st.session_state["keep_last_name"] = True
+        st.session_state.setdefault("keep_last_name", True)
 
         c1, c2 = st.columns([3, 1])
         with c1:
@@ -349,43 +348,37 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-    # ✅ 其他欄位照舊放在 form 內（clear_on_submit 關掉，改成手動清欄位）
-    with st.form("add_order_form", clear_on_submit=False):
-        st.date_input("下單日期", key="add_order_time")
-        st.selectbox(
-            "下單平台",
-            ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"],
-            key="add_platform"
-        )
+    # ✅ 不用 form：欄位即時寫入 session_state，側欄按鈕才拿得到最新值
+    order_time = st.date_input("下單日期", key="add_order_time")
+    platform = st.selectbox(
+        "下單平台",
+        ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"],
+        key="add_platform"
+    )
 
-        st.text_input("包裹單號", key="add_tracking_number")
-        st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
-        st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
-        st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
-        st.checkbox("已到貨", key="add_is_arrived")
-        st.checkbox("已運回", key="add_is_returned")
-        st.text_area("備註", key="add_remarks")
+    tracking_number = st.text_input("包裹單號", key="add_tracking_number")
+    amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
+    service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
+    weight_kg = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
 
-        # 底部按鈕保留（滑到底也能按），但不再依賴它方便操作
-        submit = st.form_submit_button("✅ 新增訂單", use_container_width=True)
+    cA, cB = st.columns(2)
+    with cA:
+        is_arrived = st.checkbox("已到貨", key="add_is_arrived")
+    with cB:
+        is_returned = st.checkbox("已運回", key="add_is_returned")
 
-    # ✅ 兩顆按鈕都能新增：底部 submit 或 側邊欄 quick_submit
-    if submit or quick_submit:
+    with st.expander("備註（可選）", expanded=False):
+        remarks = st.text_area("備註", key="add_remarks")
+
+    # ✅ 主畫面也保留一顆按鈕（不想用側欄也能按）
+    submit_main = st.button("✅ 新增訂單", use_container_width=True)
+
+    # ✅ 兩顆按鈕都能新增
+    if quick_submit or submit_main:
         name_to_save = (st.session_state.get("add_name") or "").strip()
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
-            # ✅ 統一從 session_state 取值（側邊欄按鈕也能新增）
-            order_time = st.session_state.get("add_order_time")
-            platform = st.session_state.get("add_platform")
-            tracking_number = st.session_state.get("add_tracking_number", "")
-            amount_rmb_db = float(st.session_state.get("add_amount_rmb", 0.0))
-            service_fee_db = float(st.session_state.get("add_service_fee", 0.0))
-            weight_kg = float(st.session_state.get("add_weight_kg", 0.0))
-            is_arrived = bool(st.session_state.get("add_is_arrived", False))
-            is_returned = bool(st.session_state.get("add_is_returned", False))
-            remarks = st.session_state.get("add_remarks", "")
-
             cursor.execute(
                 """
                 INSERT INTO orders 
@@ -394,7 +387,8 @@ elif menu == "🧾 新增訂單":
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (order_time, name_to_save, platform, tracking_number,
-                 amount_rmb_db, weight_kg, is_arrived, is_returned, service_fee_db, remarks)
+                 float(amount_rmb), float(weight_kg), bool(is_arrived), bool(is_returned),
+                 float(service_fee), remarks)
             )
             conn.commit()
 
@@ -409,7 +403,6 @@ elif menu == "🧾 新增訂單":
 
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
-
 
 
 # 3. 編輯訂單
@@ -1279,6 +1272,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
