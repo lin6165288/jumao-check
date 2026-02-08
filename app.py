@@ -266,6 +266,23 @@ elif menu == "🧾 新增訂單":
         st.toast(st.session_state["flash_toast"])
         st.session_state["flash_toast"] = None
 
+    # ✅ 第一次進來時，初始化表單欄位（避免沒有 value 參數後出現空值）
+    defaults = {
+        "add_tracking_number": "",
+        "add_amount_rmb": 0.0,
+        "add_service_fee": 0.0,
+        "add_weight_kg": 0.0,
+        "add_is_arrived": False,
+        "add_is_returned": False,
+        "add_remarks": "",
+    }
+    for k, v in defaults.items():
+        st.session_state.setdefault(k, v)
+
+    st.session_state.setdefault("add_order_time", datetime.today().date())
+    st.session_state.setdefault("add_platform", "集運")
+
+
     # ✅ 若上一輪要求清空姓名：這一輪一開始先清（一定要在 text_input 之前）
     if st.session_state.get("clear_add_name"):
         st.session_state["add_name"] = ""
@@ -331,14 +348,14 @@ elif menu == "🧾 新增訂單":
     # ✅ 其他欄位照舊放在 form 內（但 clear_on_submit 要關掉，改成手動清欄位）
     with st.form("add_order_form", clear_on_submit=False):
         # ✅ 日期/平台會延續（不主動清它們）
-        order_time      = st.date_input("下單日期", datetime.today(), key="add_order_time")
+        order_time = st.date_input("下單日期", key="add_order_time")
         platform        = st.selectbox("下單平台", ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書"], key="add_platform")
 
         # ✅ 其他欄位送出後清空（用 clear_add_fields 旗標）
         tracking_number = st.text_input("包裹單號", key="add_tracking_number")
-        amount_rmb      = st.number_input("訂單金額（人民幣）", min_value=0.0, value=0.0, step=1.0, key="add_amount_rmb")
-        service_fee     = st.number_input("代購手續費（NT$）", min_value=0.0, value=0.0, step=10.0, key="add_service_fee")
-        weight_kg       = st.number_input("包裹公斤數", min_value=0.0, value=0.0, step=0.1, key="add_weight_kg")
+        amount_rmb  = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
+        service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
+        weight_kg   = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
         is_arrived      = st.checkbox("已到貨", key="add_is_arrived")
         is_returned     = st.checkbox("已運回", key="add_is_returned")
         remarks         = st.text_area("備註", key="add_remarks")
@@ -1246,6 +1263,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
