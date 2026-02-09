@@ -301,7 +301,7 @@ elif menu == "🧾 新增訂單":
 
     # ✅ 左側固定快捷新增（不用滑到底）
     quick_submit = st.sidebar.button("✅ 新增訂單", use_container_width=True)
-    st.sidebar.caption("按這顆就會新增（使用目前畫面上的輸入值）")
+    st.sidebar.caption("按這顆就會新增")
 
     name_options = get_customer_names(conn)
 
@@ -321,7 +321,7 @@ elif menu == "🧾 新增訂單":
                 st.rerun()
 
         st.text_input(
-            "輸入姓名（打字會出現建議）",
+            "輸入姓名",
             key="add_name",
             label_visibility="collapsed",
             placeholder="請輸入客戶名稱"
@@ -331,7 +331,7 @@ elif menu == "🧾 新增訂單":
         if q:
             suggestions = [n for n in name_options if n.lower().startswith(q)][:8]
             if suggestions:
-                st.caption("建議（點一下直接帶入）")
+                st.caption("點一下直接帶入")
                 cols = st.columns(min(4, len(suggestions)))
 
                 def _pick(n):
@@ -1272,6 +1272,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
