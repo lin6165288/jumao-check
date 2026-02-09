@@ -897,18 +897,25 @@ elif menu == "📥 貼上入庫訊息":
             st.warning("沒解析到任何『單號＋重量』，請確認範例格式或貼更多原文。")
         else:
             st.success(f"解析到 {len(found)} 筆：")
-            st.write([(tn, w) for (tn, w, _) in found])
+            df_parsed = pd.DataFrame(
+                [{"tracking_number": tn, "weight_kg": w} for (tn, w, _) in found]
+            )
+            st.dataframe(df_parsed, use_container_width=True)
+
             
             
             
             # 寫回資料庫（同單號只計一次：全部歸 0，再選一筆當主筆）
             updated, missing = 0, []
-            ok_rows = []  # ✅ NEW：成功登記清單（用來做表格）
-            cursor = conn.cursor()  # ✅ NEW
+            ok_rows = []     # ✅ 成功表格
+            fail_rows = []   # ✅ 失敗表格
+            cursor = conn.cursor()  # ✅ 你下面有 cursor.execute，需要這行
+
             for tn, w, raw_line in found:
+
                 tn = str(tn).strip()
 
-                # (A) 先確認此單號是否存在；不存在 → 丟進佇列（同時抓 customer_name）
+                # (A) 先確認此單號是否存在；不存在 → 丟進佇列（並抓客戶姓名）
                 try:
                     df_match = pd.read_sql(
                         """
@@ -924,6 +931,13 @@ elif menu == "📥 貼上入庫訊息":
                     if df_match.empty:
                         missing.append(tn)
                         enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
+                        fail_rows.append({
+                            "tracking_number": tn,
+                            "customer_name": "",
+                            "weight_kg": w,
+                            "inbound_date": datetime.today().date(),
+                            "note": "找不到對應訂單",
+                        })
                         continue
 
                     customer_name = str(df_match.iloc[0]["customer_name"] or "").strip()
@@ -933,7 +947,15 @@ elif menu == "📥 貼上入庫訊息":
                 except Exception as e:
                     missing.append(tn)
                     enqueue_failed(conn, tn, w, raw_line, f"查詢失敗: {e}")
+                    fail_rows.append({
+                        "tracking_number": tn,
+                        "customer_name": "",
+                        "weight_kg": w,
+                        "inbound_date": datetime.today().date(),
+                        "note": f"查詢失敗: {e}",
+                    })
                     continue
+
 
 
                 # (B) 先把這個單號「全部設為 0kg + 已到貨」
@@ -958,9 +980,16 @@ elif menu == "📥 貼上入庫訊息":
                 if cursor.rowcount == 0:
                     missing.append(tn)
                     enqueue_failed(conn, tn, w, raw_line, "存在該單號，但更新主筆失敗")
+                    fail_rows.append({
+                        "tracking_number": tn,
+                        "customer_name": customer_name,
+                        "weight_kg": w,
+                        "inbound_date": datetime.today().date(),
+                        "note": "存在該單號，但更新主筆失敗",
+                    })
                     continue
 
-
+                # ✅ 成功
                 ok_rows.append({
                     "tracking_number": tn,
                     "customer_name": customer_name,
@@ -971,16 +1000,23 @@ elif menu == "📥 貼上入庫訊息":
 
 
 
+
             conn.commit()
     
             st.success(f"✅ 成功更新 {updated} 筆到貨資料")
-            if ok_rows:
-                st.markdown("### ✅ 成功登記（含客戶姓名）")
-                st.dataframe(pd.DataFrame(ok_rows), use_container_width=True)
 
-            if missing:
-                st.info("⚠️ 下列單號未能即時更新，已加入重試佇列：")
-                st.write(missing)
+            st.markdown("### ✅ 成功登記")
+            if ok_rows:
+                st.dataframe(pd.DataFrame(ok_rows), use_container_width=True)
+            else:
+                st.info("本次沒有成功登記的資料。")
+
+            st.markdown("### ⚠️ 未成功（本次，已加入重試佇列）")
+            if fail_rows:
+                st.dataframe(pd.DataFrame(fail_rows), use_container_width=True)
+            else:
+                st.caption("本次沒有未成功的資料。")
+
 
 
 
@@ -1305,6 +1341,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
