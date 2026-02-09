@@ -27,13 +27,17 @@ def show_toast_once(key: str, msg: str, icon: str = "✅"):
 QUEUE_FILE = "failed_inbound_queue.json"
 
 def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last_error=None):
-    # 確保表存在（可留你原本的 ensure_* 寫法）
     ensure_failed_orders_table(conn)
+
+    # ✅ 防爆：last_error 太長會讓 VARCHAR(255) 直接 DataError
+    if last_error is not None:
+        last_error = str(last_error)
+        last_error = last_error[:250]   # 留點空間避免邊界問題
+
     sql = """
     INSERT INTO failed_orders (tracking_number, weight_kg, raw_message, retry_count, last_error)
     VALUES (%s, %s, %s, 1, %s)
     ON DUPLICATE KEY UPDATE
-      -- 只有當提供新值時才覆蓋，否則保留舊值
       weight_kg = IFNULL(VALUES(weight_kg), weight_kg),
       raw_message = IFNULL(VALUES(raw_message), raw_message),
       last_error = VALUES(last_error),
@@ -43,6 +47,7 @@ def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last
     with conn.cursor() as cur:
         cur.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
     conn.commit()
+
 
 
 
@@ -1300,6 +1305,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
