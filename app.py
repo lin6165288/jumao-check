@@ -95,6 +95,8 @@ def clear_failed(conn):
 def retry_failed_all(conn):
     df = load_failed(conn)
     success = fail = 0
+    success_list = []   # ✅ NEW：記錄成功的單號
+
     for _, row in df.iterrows():
         tn, w, raw_msg = row["tracking_number"], row["weight_kg"], row["raw_message"]
         try:
@@ -109,19 +111,27 @@ def retry_failed_all(conn):
                     """,
                     (w, tn)
                 )
+
                 if cur.rowcount > 0:
                     conn.commit()
+
+                    # ✅ 成功：刪掉佇列 + 記錄成功單號
                     with conn.cursor() as c2:
                         c2.execute("DELETE FROM failed_orders WHERE tracking_number=%s", (tn,))
                     conn.commit()
+
                     success += 1
+                    success_list.append(str(tn))   # ✅ NEW
                 else:
                     enqueue_failed(conn, tn, w, raw_msg, "找不到對應訂單")
                     fail += 1
+
         except Exception as e:
             enqueue_failed(conn, tn, w, raw_msg, str(e))
             fail += 1
-    return success, fail
+
+    return success, fail, success_list  # ✅ NEW：多回傳清單
+
 
 
 def delete_failed_one(conn, tracking_number: str):
@@ -871,9 +881,13 @@ elif menu == "📥 貼上入庫訊息":
     auto_retry = st.toggle("進入此頁時自動重試佇列", value=True)
     if auto_retry:
         ensure_failed_orders_table(conn)
-        ok, fail = retry_failed_all(conn)
+        ok, fail, ok_list = retry_failed_all(conn)
         if ok or fail:
             st.caption(f"🔁 自動重試：成功 {ok} 筆、仍待 {fail} 筆")
+            if ok_list:
+                st.success("✅ 本次自動重試成功單號：")
+                st.dataframe(pd.DataFrame({"tracking_number": ok_list}), use_container_width=True)
+
             
     if st.button("🔎 解析並更新"):
         found = []
@@ -1052,9 +1066,15 @@ elif menu == "📥 貼上入庫訊息":
         c1, _, c3 = st.columns(3)
         with c1:
             if st.button("🔁 重試全部", use_container_width=True):
-                ok, fail = retry_failed_all(conn)
+                ok, fail, ok_list = retry_failed_all(conn)
                 st.success(f"已重試：成功 {ok} 筆、仍待 {fail} 筆")
-                st.rerun()
+
+                if ok_list:
+                    st.markdown("#### ✅ 本次重試成功單號")
+                    st.dataframe(pd.DataFrame({"tracking_number": ok_list}), use_container_width=True)
+
+                st.stop()  # ✅ 先停住，讓你看得到結果（不然 rerun 就洗掉）
+
         with c3:
             if st.button("🧹 清空佇列", use_container_width=True):
                 clear_failed(conn)
@@ -1341,6 +1361,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
