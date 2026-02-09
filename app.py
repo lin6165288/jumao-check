@@ -922,7 +922,7 @@ elif menu == "📥 貼上入庫訊息":
                         SELECT customer_name
                         FROM orders
                         WHERE tracking_number = %s
-                        ORDER BY id ASC
+                        ORDER BY order_id ASC
                         LIMIT 1
                         """,
                         conn, params=[tn],
@@ -1341,6 +1341,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
