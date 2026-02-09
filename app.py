@@ -898,23 +898,38 @@ elif menu == "📥 貼上入庫訊息":
             
             # 寫回資料庫（同單號只計一次：全部歸 0，再選一筆當主筆）
             updated, missing = 0, []
+            ok_rows = []  # ✅ NEW：成功登記清單（用來做表格）
+            cursor = conn.cursor()  # ✅ NEW
             for tn, w, raw_line in found:
                 tn = str(tn).strip()
 
-                # (A) 先確認此單號是否存在；不存在 → 丟進佇列
+                # (A) 先確認此單號是否存在；不存在 → 丟進佇列（同時抓 customer_name）
                 try:
-                    df_exist = pd.read_sql(
-                        "SELECT COUNT(*) AS cnt FROM orders WHERE tracking_number = %s",
+                    df_match = pd.read_sql(
+                        """
+                        SELECT customer_name
+                        FROM orders
+                        WHERE tracking_number = %s
+                        ORDER BY id ASC
+                        LIMIT 1
+                        """,
                         conn, params=[tn],
                     )
-                    if int(df_exist.iloc[0]["cnt"]) == 0:
+
+                    if df_match.empty:
                         missing.append(tn)
                         enqueue_failed(conn, tn, w, raw_line, "找不到對應訂單")
                         continue
+
+                    customer_name = str(df_match.iloc[0]["customer_name"] or "").strip()
+                    if not customer_name:
+                        customer_name = "（未填姓名）"
+                
                 except Exception as e:
                     missing.append(tn)
                     enqueue_failed(conn, tn, w, raw_line, f"查詢失敗: {e}")
                     continue
+
 
                 # (B) 先把這個單號「全部設為 0kg + 已到貨」
                 cursor.execute("""
@@ -939,12 +954,25 @@ elif menu == "📥 貼上入庫訊息":
                     missing.append(tn)
                     enqueue_failed(conn, tn, w, raw_line, "存在該單號，但更新主筆失敗")
                     continue
-    
+
+
+                ok_rows.append({
+                    "tracking_number": tn,
+                    "customer_name": customer_name,
+                    "weight_kg": w,
+                    "inbound_date": datetime.today().date()
+                })
                 updated += 1
+
+
 
             conn.commit()
     
             st.success(f"✅ 成功更新 {updated} 筆到貨資料")
+            if ok_rows:
+                st.markdown("### ✅ 成功登記（含客戶姓名）")
+                st.dataframe(pd.DataFrame(ok_rows), use_container_width=True)
+
             if missing:
                 st.info("⚠️ 下列單號未能即時更新，已加入重試佇列：")
                 st.write(missing)
@@ -1272,6 +1300,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
