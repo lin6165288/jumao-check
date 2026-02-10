@@ -1321,19 +1321,27 @@ elif menu == "💰 利潤報表/匯出":
             df_valid["代購手續費收入"] = df_valid["service_fee"]
             df_valid["總利潤"]        = df_valid["匯率價差利潤"] + df_valid["代購手續費收入"]
 
-            # ----- 日期區間選擇器 -----
+            # ----- 日期區間選擇器（預設：本月 1 號～今天）-----
             min_d = df_valid["order_time"].dt.date.min()
             max_d = df_valid["order_time"].dt.date.max()
 
+            today = datetime.today().date()
+            this_month_start = today.replace(day=1)
+
+            # 預設值要落在可選範圍內（夾住）
+            default_start = max(this_month_start, min_d)
+            default_end   = min(today, max_d)
+
             colA, colB = st.columns(2)
             with colA:
-                start_date = st.date_input("起始日期", value=min_d, min_value=min_d, max_value=max_d)
+                start_date = st.date_input("起始日期", value=default_start, min_value=min_d, max_value=max_d)
             with colB:
-                end_date   = st.date_input("結束日期", value=max_d, min_value=min_d, max_value=max_d)
+                end_date   = st.date_input("結束日期", value=default_end, min_value=min_d, max_value=max_d)
 
             # 防呆：若選反，自動交換
             if start_date > end_date:
                 start_date, end_date = end_date, start_date
+
 
             # 篩選區間（含頭含尾）
             start_dt = pd.to_datetime(start_date)
@@ -1493,6 +1501,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
