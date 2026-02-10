@@ -316,7 +316,6 @@ elif menu == "🧾 新增訂單":
 
     # ✅ 左側固定快捷新增（不用滑到底）
     quick_submit = st.sidebar.button("✅ 新增訂單", use_container_width=True)
-    st.sidebar.caption("按這顆就會新增")
 
     name_options = get_customer_names(conn)
 
@@ -1361,6 +1360,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
