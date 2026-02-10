@@ -143,38 +143,67 @@ def delete_failed_one(conn, tracking_number: str):
 
 
 # ===
-DELAY_TAG = "[延後]"
+# ===== 延後 / 已通知：用 remarks 的 tag（不改 DB 結構） =====
 
-def has_delay_tag(x: str) -> bool:
-    return (DELAY_TAG in str(x)) if x is not None else False
+DELAY_TAG  = "[延後]"
+NOTIFY_TAG = "[已通知]"
+
+def has_delay_tag(remarks: str) -> bool:
+    s = "" if remarks is None else str(remarks)
+    return DELAY_TAG in s
+
+def has_notify_tag(remarks: str) -> bool:
+    s = "" if remarks is None else str(remarks)
+    return NOTIFY_TAG in s
 
 def add_delay_tag_sql(order_ids):
-    # 在 remarks 前面加上 [延後] （若已存在則不重複）
     placeholders = ",".join(["%s"] * len(order_ids))
     sql = f"""
-        UPDATE orders
-        SET remarks = TRIM(
-            CONCAT(
-                '{DELAY_TAG} ',
-                COALESCE(NULLIF(remarks,''), '')
-            )
-        )
-        WHERE order_id IN ({placeholders})
-          AND (remarks IS NULL OR remarks NOT LIKE %s)
+    UPDATE orders
+    SET remarks = CASE
+        WHEN remarks IS NULL OR remarks = '' THEN %s
+        WHEN remarks LIKE %s THEN remarks
+        ELSE CONCAT(remarks, ' ', %s)
+    END
+    WHERE order_id IN ({placeholders})
     """
-    params = [*order_ids, f"%{DELAY_TAG}%"]
+    params = [DELAY_TAG, f"%{DELAY_TAG}%", DELAY_TAG] + list(order_ids)
     return sql, params
 
 def remove_delay_tag_sql(order_ids):
-    # 選用：移除 [延後] 標記
     placeholders = ",".join(["%s"] * len(order_ids))
     sql = f"""
-        UPDATE orders
-        SET remarks = TRIM(REPLACE(COALESCE(remarks,''), '{DELAY_TAG}', ''))
-        WHERE order_id IN ({placeholders})
+    UPDATE orders
+    SET remarks = TRIM(REPLACE(COALESCE(remarks,''), %s, ''))
+    WHERE order_id IN ({placeholders})
     """
-    params = [*order_ids]
+    params = [DELAY_TAG] + list(order_ids)
     return sql, params
+
+def add_notify_tag_sql(order_ids):
+    placeholders = ",".join(["%s"] * len(order_ids))
+    sql = f"""
+    UPDATE orders
+    SET remarks = CASE
+        WHEN remarks IS NULL OR remarks = '' THEN %s
+        WHEN remarks LIKE %s THEN remarks
+        ELSE CONCAT(remarks, ' ', %s)
+    END
+    WHERE order_id IN ({placeholders})
+    """
+    params = [NOTIFY_TAG, f"%{NOTIFY_TAG}%", NOTIFY_TAG] + list(order_ids)
+    return sql, params
+
+def remove_notify_tag_sql(order_ids):
+    placeholders = ",".join(["%s"] * len(order_ids))
+    sql = f"""
+    UPDATE orders
+    SET remarks = TRIM(REPLACE(COALESCE(remarks,''), %s, ''))
+    WHERE order_id IN ({placeholders})
+    """
+    params = [NOTIFY_TAG] + list(order_ids)
+    return sql, params
+
 
 #
 
@@ -576,6 +605,7 @@ elif menu == "🔍 搜尋訂單":
 
 
 # 5. 可出貨名單
+# 5. 可出貨名單
 elif menu == "📦 可出貨名單":
     st.subheader("📦 可出貨名單")
 
@@ -614,12 +644,23 @@ elif menu == "📦 可出貨名單":
 
         st.divider()
 
-        # ======== 加：打勾只下載 + 延後運回（不改 DB 結構，用 remarks 的 [延後]） ========
-        df["delayed_flag"] = df["remarks"].apply(has_delay_tag)
+        # ======== 加：勾選列 + 延後運回 + 已通知（都用 remarks tag，不改 DB） ========
+        df["delayed_flag"]  = df["remarks"].apply(has_delay_tag)
+        df["notified_flag"] = df["remarks"].apply(has_notify_tag)
 
         df_display = format_order_df(df.copy())
-        # 顯示延後標籤欄
-        df_display.insert(1, "標記", df["delayed_flag"].map(lambda b: "⚠️ 延後" if b else ""))
+
+        # 顯示標籤欄（延後 / 已通知）
+        def row_tags(i):
+            tags = []
+            if df.loc[i, "delayed_flag"]:
+                tags.append("⚠️ 延後")
+            if df.loc[i, "notified_flag"]:
+                tags.append("📣 已通知")
+            return " / ".join(tags)
+
+        df_display.insert(1, "標記", [row_tags(i) for i in df.index])
+
         # 勾選欄
         if "✅ 選取" not in df_display.columns:
             df_display.insert(0, "✅ 選取", False)
@@ -632,13 +673,14 @@ elif menu == "📦 可出貨名單":
             use_container_width=True,
             height=460,
             column_config={
-                "✅ 選取": st.column_config.CheckboxColumn("✅ 選取", help="勾選要下載/延後的訂單"),
+                "✅ 選取": st.column_config.CheckboxColumn("✅ 選取", help="勾選要下載/延後/已通知操作的訂單"),
             },
         )
 
         picked_ids = df.loc[edited["✅ 選取"].values, "order_id"].tolist()
 
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4, c5 = st.columns(5)
+
         with c1:
             # 只匯出勾選名單
             buf = io.BytesIO()
@@ -655,7 +697,7 @@ elif menu == "📦 可出貨名單":
             )
 
         with c2:
-            if st.button("⏰ 延後運回（標記勾選）", disabled=len(picked_ids)==0, use_container_width=True):
+            if st.button("⏰ 延後運回（勾選）", disabled=len(picked_ids)==0, use_container_width=True):
                 try:
                     sql, params = add_delay_tag_sql(picked_ids)
                     cursor.execute(sql, params)
@@ -666,7 +708,6 @@ elif menu == "📦 可出貨名單":
                     st.error(f"發生錯誤：{e}")
 
         with c3:
-            # 選用：取消延後
             if st.button("🧹 取消延後（勾選）", disabled=len(picked_ids)==0, use_container_width=True):
                 try:
                     sql2, params2 = remove_delay_tag_sql(picked_ids)
@@ -677,27 +718,50 @@ elif menu == "📦 可出貨名單":
                 except Exception as e:
                     st.error(f"發生錯誤：{e}")
 
-        # ====== 原本統整：同客戶 包裹數 / 總公斤數 / 總國際運費（保留並加勾選/延後） ======
+        with c4:
+            if st.button("📣 標記已通知（勾選）", disabled=len(picked_ids)==0, use_container_width=True):
+                try:
+                    sql3, params3 = add_notify_tag_sql(picked_ids)
+                    cursor.execute(sql3, params3)
+                    conn.commit()
+                    st.success(f"📣 已標記 {len(picked_ids)} 筆為【已通知】。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        with c5:
+            if st.button("🧹 取消已通知（勾選）", disabled=len(picked_ids)==0, use_container_width=True):
+                try:
+                    sql4, params4 = remove_notify_tag_sql(picked_ids)
+                    cursor.execute(sql4, params4)
+                    conn.commit()
+                    st.success(f"🧹 已移除 {len(picked_ids)} 筆的【已通知】標記。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        # ====== 統整：同客戶 包裹數 / 總公斤數 / 總國際運費（加：已通知） ======
         st.markdown("### 📦 可出貨統整")
 
         df_calc = df_all[(cond1 | cond2) & not_returned].copy()
-        df_calc["delayed_flag"] = df_calc["remarks"].apply(has_delay_tag)
+        df_calc["delayed_flag"]  = df_calc["remarks"].apply(has_delay_tag)
+        df_calc["notified_flag"] = df_calc["remarks"].apply(has_notify_tag)
+
         df_nonzero = df_calc[pd.to_numeric(df_calc["weight_kg"], errors="coerce").fillna(0) > 0].copy()
 
-        # 依「客戶 × 平台」合併
         # 依「客戶 × 平台」合併（只統計本次清單中、重量>0 的訂單用於費用計算）
         grp = (
             df_nonzero
             .groupby(["customer_name", "platform"], as_index=False)
             .agg(total_w=("weight_kg", "sum"),
-                 pkg_cnt=("order_id", "count"))   # 供參考，可不顯示
+                 pkg_cnt=("order_id", "count"))
         )
 
         # 計價規則
         def billed_weight(w, pf):
             base = 1.0 if pf == "集運" else 0.5
             return max(base, math.ceil(float(w) / 0.5) * 0.5)
-        
+
         def unit_price(pf):
             return 90.0 if pf == "集運" else 70.0
 
@@ -705,11 +769,14 @@ elif menu == "📦 可出貨名單":
         grp["price_per_kg"] = grp["platform"].apply(unit_price)
         grp["fee"]          = grp["billed_w"] * grp["price_per_kg"]
 
-        # —— 新增：計算「本次清單」每位客戶的延後筆數 / 總筆數 —— 
-        per_customer_delay = (
+        # —— 客戶層級：延後數 / 已通知數 / 本次清單總筆數 —— 
+        per_customer_flags = (
             df_calc.groupby("customer_name", as_index=False)
-                   .agg(延後數=("delayed_flag", "sum"),
-                        本次清單總筆數=("order_id", "count"))
+                   .agg(
+                       延後數=("delayed_flag", "sum"),
+                       已通知數=("notified_flag", "sum"),
+                       本次清單總筆數=("order_id", "count")
+                   )
         )
 
         # 客戶層級的費用彙總
@@ -720,32 +787,43 @@ elif menu == "📦 可出貨名單":
                     總國際運費=("fee", "sum"))
         )
 
-        # 合併「延後數/總筆數」資訊
-        summary = summary_fee.merge(per_customer_delay, on="customer_name", how="left").fillna(0)
+        # 合併 flags
+        summary = summary_fee.merge(per_customer_flags, on="customer_name", how="left").fillna(0)
 
-        # 產生標籤：0=無延後、全=全部延後、其他=部分延後
+        # 延後標籤
         def delay_label(row):
             d = int(row["延後數"])
             t = int(row["本次清單總筆數"])
             if t == 0 or d == 0:
-                return ""                          # 沒有延後
+                return ""
             if d == t:
                 return f"⛔ 全部延後（{d}/{t}）"
             return f"⚠️ 部分延後（{d}/{t}）"
 
-        summary["標記"] = summary.apply(delay_label, axis=1)
+        # 已通知標籤
+        def notify_label(row):
+            n = int(row["已通知數"])
+            t = int(row["本次清單總筆數"])
+            if t == 0 or n == 0:
+                return ""
+            if n == t:
+                return f"✅ 已全通知（{n}/{t}）"
+            return f"🟡 部分通知（{n}/{t}）"
 
-        # 顯示用
+        summary["標記"] = summary.apply(delay_label, axis=1)
+        summary["通知"] = summary.apply(notify_label, axis=1)
+
+        # 顯示排序
         summary = summary.sort_values(["總國際運費", "總公斤數"], ascending=[False, False])
 
         summary_display = summary.copy()
         summary_display.rename(columns={"customer_name": "客戶姓名"}, inplace=True)
 
-        # 你原本的勾選欄位
+        # 勾選欄位
         summary_display.insert(0, "✅ 選取", False)
 
-        # 把「標記」放在勾選後面，比較醒目
-        cols = ["✅ 選取", "標記", "客戶姓名", "包裹總數", "本次清單總筆數", "延後數", "總公斤數", "總國際運費"]
+        # 欄位順序
+        cols = ["✅ 選取", "標記", "通知", "客戶姓名", "包裹總數", "本次清單總筆數", "延後數", "已通知數", "總公斤數", "總國際運費"]
         summary_display = summary_display[[c for c in cols if c in summary_display.columns]]
 
         edited_sum = st.data_editor(
@@ -762,43 +840,46 @@ elif menu == "📦 可出貨名單":
 
         picked_names = edited_sum.loc[edited_sum["✅ 選取"] == True, "客戶姓名"].tolist()
 
-        only_nondelay = st.toggle("📄 匯出時排除延後（建議開啟）", value=True, help="勾選後，下載的可出貨名單只包含未標記『延後』的訂單。")
+        # 匯出細項的篩選：排除延後 / 排除已通知（可各自開關）
+        only_nondelay  = st.toggle("📄 匯出時排除延後（建議開啟）", value=True,  help="下載細項時排除標記『延後』的訂單。")
+        only_unnotified = st.toggle("📣 匯出時排除已通知（避免重複通知）", value=False, help="下載細項時排除已標記『已通知』的訂單。")
 
+        cc0, cc1, cc2, cc3, cc4, cc5, cc6 = st.columns(7)
 
-        cc0, cc1, cc2, cc3, cc4 = st.columns(5)
-
-        
         with cc0:
             # 先取得本次清單中、屬於勾選客戶的訂單
             df_detail = df_calc[df_calc["customer_name"].isin(picked_names)].copy()
             if only_nondelay:
                 df_detail = df_detail[~df_detail["delayed_flag"]].copy()
+            if only_unnotified:
+                df_detail = df_detail[~df_detail["notified_flag"]].copy()
 
-            # 沒資料就不要啟用下載鈕
             no_detail = (len(picked_names) == 0) or df_detail.empty
 
-            # 用你的格式化函式輸出（與上方「可出貨名單」一致）
             df_detail_fmt = format_order_df(df_detail.copy())
-        
-            # 也可附上「單號後四碼」方便辨識（選擇性）
+
             if "tracking_number" in df_detail_fmt.columns and "單號後四碼" not in df_detail_fmt.columns:
                 df_detail_fmt.insert(1, "單號後四碼", df_detail["tracking_number"].astype(str).str[-4:])
 
-            # 下載（細項）
             buf_detail = io.BytesIO()
             df_detail_fmt.to_excel(buf_detail, index=False, engine="openpyxl")
             buf_detail.seek(0)
 
+            # 檔名更清楚
+            suffix = []
+            suffix.append("排除延後" if only_nondelay else "含延後")
+            suffix.append("排除已通知" if only_unnotified else "含已通知")
+            fname = "可出貨名單_依勾選_" + "_".join(suffix) + ".xlsx"
+
             st.download_button(
                 "📥 下載可出貨名單（細項）",
                 data=buf_detail,
-                file_name=("可出貨名單_依勾選_排除延後.xlsx" if only_nondelay else "可出貨名單_依勾選_含延後.xlsx"),
+                file_name=fname,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 disabled=no_detail,
                 use_container_width=True
             )
 
-        # 下面保留你原本的四個按鈕（下載統整、延後、取消延後、標記已運回）
         with cc1:
             buf2 = io.BytesIO()
             out_sum = edited_sum[edited_sum["✅ 選取"]==True].drop(columns=["✅ 選取"]).copy()
@@ -814,7 +895,7 @@ elif menu == "📦 可出貨名單":
             )
 
         with cc2:
-            if st.button("⏰ 延後運回 ", disabled=len(picked_names)==0, use_container_width=True):
+            if st.button("⏰ 延後運回", disabled=len(picked_names)==0, use_container_width=True):
                 try:
                     ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                     if ids:
@@ -827,7 +908,7 @@ elif menu == "📦 可出貨名單":
                     st.error(f"發生錯誤：{e}")
 
         with cc3:
-            if st.button("🧹 取消延後運回 ", disabled=len(picked_names)==0, use_container_width=True):
+            if st.button("🧹 取消延後", disabled=len(picked_names)==0, use_container_width=True):
                 try:
                     ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                     if ids:
@@ -840,7 +921,33 @@ elif menu == "📦 可出貨名單":
                     st.error(f"發生錯誤：{e}")
 
         with cc4:
-            if st.button("✅ 標記為已運回 ", disabled=len(picked_names)==0, use_container_width=True):
+            if st.button("📣 標記已通知", disabled=len(picked_names)==0, use_container_width=True):
+                try:
+                    ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
+                    if ids:
+                        sql3, params3 = add_notify_tag_sql(ids)
+                        cursor.execute(sql3, params3)
+                        conn.commit()
+                        st.success(f"📣 已標記 {len(ids)} 筆訂單為【已通知】。")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        with cc5:
+            if st.button("🧹 取消已通知", disabled=len(picked_names)==0, use_container_width=True):
+                try:
+                    ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
+                    if ids:
+                        sql4, params4 = remove_notify_tag_sql(ids)
+                        cursor.execute(sql4, params4)
+                        conn.commit()
+                        st.success(f"🧹 已移除 {len(ids)} 筆訂單的【已通知】標記。")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"發生錯誤：{e}")
+
+        with cc6:
+            if st.button("✅ 標記為已運回", disabled=len(picked_names)==0, use_container_width=True):
                 try:
                     ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                     if ids:
@@ -854,6 +961,7 @@ elif menu == "📦 可出貨名單":
                         st.info("本次清單中沒有可更新的訂單。")
                 except Exception as e:
                     st.error(f"❌ 發生錯誤：{e}")
+
 
 
 
@@ -1360,6 +1468,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
