@@ -1294,7 +1294,6 @@ elif menu == "🚚 批次出貨":
 
                 
 # 6. 利潤報表/匯出
-
 elif menu == "💰 利潤報表/匯出":
     st.subheader("💰 利潤報表與匯出")
 
@@ -1304,42 +1303,68 @@ elif menu == "💰 利潤報表/匯出":
 
     # 讀出所有訂單
     df = pd.read_sql("SELECT * FROM orders", conn)
-    # 計算三個利潤欄位
-    df["匯率價差利潤"]   = df["amount_rmb"] * (sell_rate - rmb_rate)
-    df["代購手續費收入"] = df["service_fee"]
-    df["總利潤"]       = df["匯率價差利潤"] + df["代購手續費收入"]
 
-    # ----- 月份選擇器 -----
-    df["order_time"] = pd.to_datetime(df["order_time"])
-    years  = sorted(df["order_time"].dt.year.unique())
-    year   = st.selectbox("選擇年份", years, index=len(years)-1)
-    months = list(range(1,13))
-    month  = st.selectbox("選擇月份", months, index=datetime.now().month-1)
+    if df.empty:
+        st.info("目前沒有任何訂單資料。")
+    else:
+        # 轉日期欄位
+        df["order_time"] = pd.to_datetime(df["order_time"], errors="coerce")
 
-    # 篩出該年月的訂單
-    df_sel = df[(df["order_time"].dt.year == year) & (df["order_time"].dt.month == month)]
-    st.markdown(f"#### {year} 年 {month} 月 訂單統計 （共 {len(df_sel)} 筆）")
+        # 只保留有日期的資料（避免 min/max 出錯）
+        df_valid = df.dropna(subset=["order_time"]).copy()
 
-    # 顯示 KPI
-    col1, col2, col3 = st.columns(3)
-    col1.metric("匯率價差利潤 (NT$)", f"{df_sel['匯率價差利潤'].sum():,.2f}")
-    col2.metric("手續費收入 (NT$)",     f"{df_sel['代購手續費收入'].sum():,.2f}")
-    col3.metric("總利潤 (NT$)",       f"{df_sel['總利潤'].sum():,.2f}")
+        if df_valid.empty:
+            st.warning("目前沒有可用的下單日期資料（order_time 皆為空或格式錯誤）。")
+        else:
+            # 計算三個利潤欄位（即時計算，不存 DB）
+            df_valid["匯率價差利潤"]   = df_valid["amount_rmb"] * (sell_rate - rmb_rate)
+            df_valid["代購手續費收入"] = df_valid["service_fee"]
+            df_valid["總利潤"]        = df_valid["匯率價差利潤"] + df_valid["代購手續費收入"]
 
-    # 匯出該月報表
-    st.markdown("### 📤 下載報表")
-    df_export = df_sel.copy()
-    df_export = format_order_df(df_export)  # 中文＋✔✘
+            # ----- 日期區間選擇器 -----
+            min_d = df_valid["order_time"].dt.date.min()
+            max_d = df_valid["order_time"].dt.date.max()
 
-    towrite = io.BytesIO()
-    df_export.to_excel(towrite, index=False, engine="openpyxl")
-    towrite.seek(0)
-    st.download_button(
-        label=f"📥 下載 {year}-{month:02d} 報表",
-        data=towrite,
-        file_name=f"代購利潤報表_{year}{month:02d}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+            colA, colB = st.columns(2)
+            with colA:
+                start_date = st.date_input("起始日期", value=min_d, min_value=min_d, max_value=max_d)
+            with colB:
+                end_date   = st.date_input("結束日期", value=max_d, min_value=min_d, max_value=max_d)
+
+            # 防呆：若選反，自動交換
+            if start_date > end_date:
+                start_date, end_date = end_date, start_date
+
+            # 篩選區間（含頭含尾）
+            start_dt = pd.to_datetime(start_date)
+            end_dt   = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
+            df_sel = df_valid[(df_valid["order_time"] >= start_dt) & (df_valid["order_time"] <= end_dt)].copy()
+
+            st.markdown(f"#### {start_date} ～ {end_date} 訂單統計（共 {len(df_sel)} 筆）")
+
+            # 顯示 KPI
+            col1, col2, col3 = st.columns(3)
+            col1.metric("匯率價差利潤 (NT$)", f"{df_sel['匯率價差利潤'].sum():,.2f}")
+            col2.metric("手續費收入 (NT$)",     f"{df_sel['代購手續費收入'].sum():,.2f}")
+            col3.metric("總利潤 (NT$)",       f"{df_sel['總利潤'].sum():,.2f}")
+
+            # 匯出區間報表
+            st.markdown("### 📤 下載報表")
+            df_export = df_sel.copy()
+            df_export = format_order_df(df_export)  # 中文＋✔✘
+
+            towrite = io.BytesIO()
+            df_export.to_excel(towrite, index=False, engine="openpyxl")
+            towrite.seek(0)
+
+            st.download_button(
+                label=f"📥 下載 {start_date}～{end_date} 報表",
+                data=towrite,
+                file_name=f"代購利潤報表_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
 
 # 7. 快速報價
 elif menu == "💴 快速報價":
@@ -1468,6 +1493,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
