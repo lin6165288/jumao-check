@@ -315,7 +315,7 @@ elif menu == "🧾 新增訂單":
     defaults = {
         "add_tracking_number": "",
         "add_amount_rmb": 0.0,
-        "add_service_fee": 0.0,
+        "add_service_fee": 30.0,
         "add_weight_kg": 0.0,
         "add_is_arrived": False,
         "add_is_returned": False,
@@ -336,7 +336,7 @@ elif menu == "🧾 新增訂單":
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
         st.session_state["add_amount_rmb"] = 0.0
-        st.session_state["add_service_fee"] = 0.0
+        st.session_state["add_service_fee"] = 30.0
         st.session_state["add_weight_kg"] = 0.0
         st.session_state["add_is_arrived"] = False
         st.session_state["add_is_returned"] = False
@@ -1501,6 +1501,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
