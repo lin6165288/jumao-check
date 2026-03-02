@@ -254,7 +254,7 @@ conn = mysql.connector.connect(
 )
 
 st.success("✅ DB connected")
-
+SELECT @@hostname AS host, @@port AS port, DATABASE() AS db, CURRENT_USER() AS user;
 #歷史名字搜尋
 
 def get_customer_names(conn):
@@ -1501,6 +1501,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
