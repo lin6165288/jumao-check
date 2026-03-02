@@ -486,7 +486,7 @@ if st.session_state["page"] == "home":
 
     c3, c4 = st.columns(2)
     with c3:
-        card_button("card_vip", "VIP 會員", "查看 VIP 等級、儲值餘額（由後台設定）", "⭐", "vip")
+        card_button("card_vip", "VIP 會員", "查看 VIP 等級、儲值餘額", "⭐", "vip")
     with c4:
         card_button("card_quote", "自動報價", "輸入人民幣金額，快速試算參考報價", "🧮", "quote")
 
