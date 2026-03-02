@@ -354,23 +354,70 @@ def page_feedback():
             st.error(f"寫入失敗：{e}")
 
 # =============================
-# 導覽（客戶端首頁功能選單）
 # =============================
-st.sidebar.title("🧡 橘貓代購")
-page = st.sidebar.radio(
-    "功能選單",
-    ["🔎 訂單查詢", "📘 常見問題（QA）", "⭐ VIP 會員", "🧮 自動報價", "📮 匿名回饋"],
-    index=0,
-    key="nav_radio",
-)
+# 首頁大選單導覽（你要的：先選功能才進頁面）
+# =============================
+if "page" not in st.session_state:
+    st.session_state["page"] = "home"
 
-if page == "🔎 訂單查詢":
-    page_orders()
-elif page == "📘 常見問題（QA）":
-    page_faq()
-elif page == "⭐ VIP 會員":
-    page_vip()
-elif page == "🧮 自動報價":
-    page_quote()
+def go(page_name: str):
+    st.session_state["page"] = page_name
+    st.rerun()
+
+def top_bar():
+    # 不是首頁就顯示返回
+    if st.session_state["page"] != "home":
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            if st.button("⬅ 回首頁"):
+                go("home")
+        with col2:
+            st.caption("🧡 橘貓代購｜客戶系統")
+
+# ----- 首頁 -----
+if st.session_state["page"] == "home":
+    st.title("🧡 橘貓代購｜客戶系統")
+    st.caption("請先選擇你要使用的功能")
+
+    st.write("")
+
+    # 兩排大按鈕（你可以調整排版）
+    r1 = st.columns(2)
+    with r1[0]:
+        if st.button("🔎 訂單查詢", use_container_width=True):
+            go("orders")
+    with r1[1]:
+        if st.button("📘 常見問題（QA）", use_container_width=True):
+            go("faq")
+
+    r2 = st.columns(2)
+    with r2[0]:
+        if st.button("⭐ VIP 會員", use_container_width=True):
+            go("vip")
+    with r2[1]:
+        if st.button("🧮 自動報價", use_container_width=True):
+            go("quote")
+
+    r3 = st.columns(1)
+    with r3[0]:
+        if st.button("📮 匿名回饋", use_container_width=True):
+            go("feedback")
+
+# ----- 內頁 -----
 else:
-    page_feedback()
+    top_bar()
+
+    page = st.session_state["page"]
+    if page == "orders":
+        page_orders()
+    elif page == "faq":
+        page_faq()
+    elif page == "vip":
+        page_vip()
+    elif page == "quote":
+        page_quote()
+    elif page == "feedback":
+        page_feedback()
+    else:
+        # fallback
+        go("home")
