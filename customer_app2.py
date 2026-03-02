@@ -449,15 +449,13 @@ if st.session_state["page"] == "home":
     except Exception:
         pass
 
-    st.markdown(
-        f"""
-        <div class="notice">
-          <div class="notice-title">{notice_title}</div>
-          <div class="notice-body">{notice_content}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    notice_html = (
+    '<div class="notice">'
+    f'  <div class="notice-title">{notice_title}</div>'
+    f'  <div class="notice-body">{notice_content}</div>'
+    '</div>'
+)
+st.markdown(notice_html, unsafe_allow_html=True)
 
     # 功能卡片（注意：每個 card_button 只會產生 1 顆 button，不會多小框）
     c1, c2 = st.columns(2)
