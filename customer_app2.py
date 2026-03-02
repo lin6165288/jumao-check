@@ -371,69 +371,79 @@ st.markdown(
     <style>
     .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 920px; }
 
-    /* 頁首 */
     .hero-title { font-size: 1.55rem; font-weight: 750; letter-spacing: -0.02em; margin: 0; }
     .hero-sub   { margin-top: 6px; font-size: 0.98rem; opacity: 0.65; }
+    .spacer { height: 10px; }
 
-    /* 回首頁按鈕更像小工具 */
-    .stButton>button[kind="secondary"]{
-        border-radius: 14px !important;
+    /* 卡片容器 */
+    .card {
+      position: relative;
+      border: 1px solid rgba(15, 23, 42, 0.12);
+      border-radius: 18px;
+      padding: 18px;
+      background: rgba(255,255,255,0.92);
+      transition: 0.16s ease;
+      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
     }
-
-    /* 卡片按鈕：高級、乾淨 */
-    div.stButton > button {
-        width: 100%;
-        text-align: left;
-        border: 1px solid rgba(15, 23, 42, 0.12);
-        border-radius: 18px;
-        padding: 18px 18px;
-        background: rgba(255,255,255,0.92);
-        transition: 0.16s ease;
-        box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
-    }
-    div.stButton > button:hover {
-        border-color: rgba(15, 23, 42, 0.22);
-        background: rgba(255,255,255,1);
-        box-shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
-        transform: translateY(-2px);
-    }
-    div.stButton > button:active {
-        transform: translateY(0px);
-        box-shadow: 0 6px 16px rgba(2, 6, 23, 0.08);
+    .card:hover {
+      border-color: rgba(15, 23, 42, 0.22);
+      background: rgba(255,255,255,1);
+      box-shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
+      transform: translateY(-2px);
     }
 
-    /* 卡片內容排版 */
-    .card-wrap { display: flex; gap: 14px; align-items: flex-start; }
+    .card-wrap { display:flex; gap:14px; align-items:flex-start; }
     .card-ico  {
-        width: 42px; height: 42px; border-radius: 14px;
-        border: 1px solid rgba(15, 23, 42, 0.10);
-        display: flex; align-items: center; justify-content: center;
-        font-size: 20px;
-        background: rgba(248, 250, 252, 1);
-        flex: 0 0 auto;
+      width: 42px; height: 42px; border-radius: 14px;
+      border: 1px solid rgba(15, 23, 42, 0.10);
+      display:flex; align-items:center; justify-content:center;
+      font-size:20px;
+      background: rgba(248, 250, 252, 1);
+      flex: 0 0 auto;
     }
     .card-title { font-size: 1.02rem; font-weight: 720; margin: 0; letter-spacing: -0.01em; }
     .card-desc  { font-size: 0.93rem; opacity: 0.65; margin: 6px 0 0 0; line-height: 1.35; }
 
-    /* 小分隔空白 */
-    .spacer { height: 10px; }
+    /* 把 Streamlit 的按鈕變成「透明覆蓋層」 */
+    .card-btn div.stButton > button {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      padding: 0;
+      margin: 0;
+      border: none;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
 def card_button(key, title, desc, icon, target):
-    # 用 HTML 排版讓卡片更像「產品介面」
-    html = f"""
-    <div class="card-wrap">
-      <div class="card-ico">{icon}</div>
-      <div>
-        <div class="card-title">{title}</div>
-        <div class="card-desc">{desc}</div>
-      </div>
-    </div>
-    """
-    if st.button(html, key=key, use_container_width=True):
+    # 先畫出卡片外觀
+    st.markdown(
+        f"""
+        <div class="card">
+          <div class="card-wrap">
+            <div class="card-ico">{icon}</div>
+            <div>
+              <div class="card-title">{title}</div>
+              <div class="card-desc">{desc}</div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # 再放一個透明按鈕覆蓋在同一個位置
+    # 用 container 把按鈕包起來，套上 card-btn class
+    with st.container():
+        st.markdown('<div class="card-btn">', unsafe_allow_html=True)
+        clicked = st.button(" ", key=key)  # 文字用空白即可
+        st.markdown("</div>", unsafe_allow_html=True)
+    if clicked:
         go(target)
 
 # ---- 首頁 ----
