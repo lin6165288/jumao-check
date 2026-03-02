@@ -452,7 +452,8 @@ def card_button(key, title, desc, icon, target):
     label = f"{icon}  {title}   ›\n\n{desc}"
     if st.button(label, key=key, use_container_width=True):
         go(target)
-
+        
+render_notice()
 
 # ---- 首頁 ----
 if st.session_state["page"] == "home":
