@@ -372,8 +372,7 @@ def page_feedback():
 
 # =============================
 # =============================
-# =============================
-# 首頁大卡片導覽（更好看）
+# 首頁大卡片導覽（簡約高級 + 公告卡）
 # =============================
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
@@ -382,44 +381,71 @@ def go(page_name: str):
     st.session_state["page"] = page_name
     st.rerun()
 
-# ---- CSS：簡約高級風 ----
+def top_bar():
+    col1, col2 = st.columns([1, 6])
+    with col1:
+        if st.button("⬅ 回首頁", use_container_width=True):
+            go("home")
+    with col2:
+        st.caption("🧡 橘貓代購｜客戶系統")
+
+# ---- CSS（這段一定要完整保留，不要刪引號）----
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 920px; }
+    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 940px; }
 
-    .hero-title { font-size: 1.55rem; font-weight: 750; letter-spacing: -0.02em; margin: 0; }
-    .hero-sub   { margin-top: 6px; font-size: 0.98rem; opacity: 0.65; }
+    /* 淡淡背景（簡約高級） */
+    [data-testid="stAppViewContainer"] {
+      background:
+        radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,0.06), transparent 60%),
+        radial-gradient(900px 500px at 80% 10%, rgba(16,185,129,0.05), transparent 55%),
+        linear-gradient(180deg, rgba(248,250,252,1), rgba(255,255,255,1));
+    }
+
+    .hero-title { font-size: 1.6rem; font-weight: 760; letter-spacing: -0.02em; margin: 0; color: rgba(15,23,42,0.95); }
+    .hero-sub   { margin-top: 8px; font-size: 0.98rem; opacity: 0.75; color: rgba(15,23,42,0.85); }
     .spacer { height: 10px; }
 
-    /* 卡片容器 */
-    .card {
-      position: relative;
-      border: 1px solid rgba(15, 23, 42, 0.12);
-      border-radius: 18px;
-      padding: 18px;
-      background: rgba(255,255,255,0.92);
-      transition: 0.16s ease;
-      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
-    }
-    .card:hover {
-      border-color: rgba(15, 23, 42, 0.22);
-      background: rgba(255,255,255,1);
-      box-shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
-      transform: translateY(-2px);
-    }
-
-    .card-wrap { display:flex; gap:14px; align-items:flex-start; }
-    .card-ico  {
-      width: 42px; height: 42px; border-radius: 14px;
+    /* 公告卡 */
+    .notice {
       border: 1px solid rgba(15, 23, 42, 0.10);
-      display:flex; align-items:center; justify-content:center;
-      font-size:20px;
-      background: rgba(248, 250, 252, 1);
-      flex: 0 0 auto;
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.75);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 24px rgba(2,6,23,0.06);
+      margin: 14px 0 18px 0;
     }
-    .card-title { font-size: 1.02rem; font-weight: 720; margin: 0; letter-spacing: -0.01em; }
-    .card-desc  { font-size: 0.93rem; opacity: 0.65; margin: 6px 0 0 0; line-height: 1.35; }
+    .notice-title { font-weight: 740; font-size: 1.02rem; margin: 0 0 6px 0; color: rgba(15,23,42,0.95); }
+    .notice-body  { font-size: 0.95rem; opacity: 0.78; line-height: 1.45; white-space: pre-line; }
+
+    /* 卡片按鈕（用 st.button 美化，不用 HTML button） */
+    div.stButton > button {
+        width: 100%;
+        text-align: left;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 18px;
+        padding: 18px 18px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
+        backdrop-filter: blur(6px);
+        transition: 0.16s ease;
+        box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+        white-space: normal;
+        line-height: 1.25;
+    }
+    div.stButton > button:hover {
+        border-color: rgba(15, 23, 42, 0.22);
+        box-shadow: 0 14px 30px rgba(2, 6, 23, 0.10);
+        transform: translateY(-2px);
+    }
+    div.stButton > button:active {
+        transform: translateY(0px);
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.10);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 def card_button(key, title, desc, icon, target):
@@ -427,16 +453,13 @@ def card_button(key, title, desc, icon, target):
     if st.button(label, key=key, use_container_width=True):
         go(target)
 
-        
-
-
 # ---- 首頁 ----
 if st.session_state["page"] == "home":
     st.markdown('<div class="hero-title">橘貓代購｜客戶系統</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-sub">請先選擇你要使用的功能</div>', unsafe_allow_html=True)
     st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
 
-    # 公告卡
+    # 公告卡（從 DB 讀，沒讀到就用預設）
     notice_title = "📌 公告"
     notice_content = "如需提前運回或有任何問題，請私訊橘貓。\n系統資料約 1~2 日更新一次。"
     try:
@@ -449,15 +472,12 @@ if st.session_state["page"] == "home":
     except Exception:
         pass
 
-    notice_html = (
-    '<div class="notice">'
-    f'  <div class="notice-title">{notice_title}</div>'
-    f'  <div class="notice-body">{notice_content}</div>'
-    '</div>'
-)
-st.markdown(notice_html, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="notice"><div class="notice-title">{notice_title}</div><div class="notice-body">{notice_content}</div></div>',
+        unsafe_allow_html=True,
+    )
 
-    # 功能卡片（注意：每個 card_button 只會產生 1 顆 button，不會多小框）
+    # 功能卡片
     c1, c2 = st.columns(2)
     with c1:
         card_button("card_orders", "訂單查詢", "查詢包裹到貨/運回狀態與重量統計", "🔎", "orders")
@@ -472,10 +492,10 @@ st.markdown(notice_html, unsafe_allow_html=True)
 
     st.write("")
     card_button("card_feedback", "匿名回饋", "留下建議或想法，幫橘貓系統變得更好", "📮", "feedback")
+
 # ---- 內頁 ----
 else:
     top_bar()
-
     page = st.session_state["page"]
     if page == "orders":
         page_orders()
