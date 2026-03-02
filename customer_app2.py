@@ -382,16 +382,22 @@ def go(page_name: str):
     st.session_state["page"] = page_name
     st.rerun()
 
+# ---- CSS：簡約高級風 ----
 st.markdown(
     """
     <style>
     .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 920px; }
 
+    /* 頁首 */
     .hero-title { font-size: 1.55rem; font-weight: 750; letter-spacing: -0.02em; margin: 0; }
     .hero-sub   { margin-top: 6px; font-size: 0.98rem; opacity: 0.65; }
-    .spacer { height: 10px; }
 
-    /* 讓每個卡片按鈕看起來像高級卡片 */
+    /* 回首頁按鈕更像小工具 */
+    .stButton>button[kind="secondary"]{
+        border-radius: 14px !important;
+    }
+
+    /* 卡片按鈕：高級、乾淨 */
     div.stButton > button {
         width: 100%;
         text-align: left;
@@ -401,8 +407,6 @@ st.markdown(
         background: rgba(255,255,255,0.92);
         transition: 0.16s ease;
         box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
-        white-space: normal;   /* 允許換行 */
-        line-height: 1.25;
     }
     div.stButton > button:hover {
         border-color: rgba(15, 23, 42, 0.22);
@@ -415,19 +419,40 @@ st.markdown(
         box-shadow: 0 6px 16px rgba(2, 6, 23, 0.08);
     }
 
-    /* 卡片內文排版：第一行大標，第二行描述 */
+    /* 卡片內容排版 */
+    .card-wrap { display: flex; gap: 14px; align-items: flex-start; }
+    .card-ico  {
+        width: 42px; height: 42px; border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.10);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+        background: rgba(248, 250, 252, 1);
+        flex: 0 0 auto;
+    }
     .card-title { font-size: 1.02rem; font-weight: 720; margin: 0; letter-spacing: -0.01em; }
-    .card-desc  { font-size: 0.93rem; opacity: 0.65; margin-top: 6px; line-height: 1.35; }
+    .card-desc  { font-size: 0.93rem; opacity: 0.65; margin: 6px 0 0 0; line-height: 1.35; }
+
+    /* 小分隔空白 */
+    .spacer { height: 10px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 def card_button(key, title, desc, icon, target):
-    # 用兩行文字做卡片：第一行標題、第二行描述
-    label = f"{icon}  {title}\n\n{desc}"
-    if st.button(label, key=key, use_container_width=True):
+    # 用 HTML 排版讓卡片更像「產品介面」
+    html = f"""
+    <div class="card-wrap">
+      <div class="card-ico">{icon}</div>
+      <div>
+        <div class="card-title">{title}</div>
+        <div class="card-desc">{desc}</div>
+      </div>
+    </div>
+    """
+    if st.button(html, key=key, use_container_width=True):
         go(target)
+
         
 
 
