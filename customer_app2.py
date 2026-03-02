@@ -365,63 +365,82 @@ def go(page_name: str):
     st.session_state["page"] = page_name
     st.rerun()
 
-# ---- CSS：卡片按鈕美化（純前端，不用套件）----
+# ---- CSS：簡約高級風 ----
 st.markdown(
     """
     <style>
-    /* 讓整體看起來更乾淨 */
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 880px; }
+    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 920px; }
 
-    /* 隱藏 Streamlit button 原本的邊框陰影 */
+    /* 頁首 */
+    .hero-title { font-size: 1.55rem; font-weight: 750; letter-spacing: -0.02em; margin: 0; }
+    .hero-sub   { margin-top: 6px; font-size: 0.98rem; opacity: 0.65; }
+
+    /* 回首頁按鈕更像小工具 */
+    .stButton>button[kind="secondary"]{
+        border-radius: 14px !important;
+    }
+
+    /* 卡片按鈕：高級、乾淨 */
     div.stButton > button {
-        border: 1px solid rgba(49, 51, 63, 0.12);
+        width: 100%;
+        text-align: left;
+        border: 1px solid rgba(15, 23, 42, 0.12);
         border-radius: 18px;
         padding: 18px 18px;
-        height: auto;
-        width: 100%;
-        background: white;
-        transition: 0.15s ease-in-out;
-        text-align: left;
+        background: rgba(255,255,255,0.92);
+        transition: 0.16s ease;
+        box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
     }
     div.stButton > button:hover {
+        border-color: rgba(15, 23, 42, 0.22);
+        background: rgba(255,255,255,1);
+        box-shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
         transform: translateY(-2px);
-        border-color: rgba(49, 51, 63, 0.22);
-        box-shadow: 0 10px 24px rgba(0,0,0,0.08);
     }
     div.stButton > button:active {
         transform: translateY(0px);
+        box-shadow: 0 6px 16px rgba(2, 6, 23, 0.08);
     }
 
-    /* 讓按鈕內容更像卡片 */
-    .card-title { font-size: 1.05rem; font-weight: 700; margin: 0; }
-    .card-desc  { font-size: 0.92rem; opacity: 0.7; margin: 6px 0 0 0; }
+    /* 卡片內容排版 */
+    .card-wrap { display: flex; gap: 14px; align-items: flex-start; }
+    .card-ico  {
+        width: 42px; height: 42px; border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.10);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+        background: rgba(248, 250, 252, 1);
+        flex: 0 0 auto;
+    }
+    .card-title { font-size: 1.02rem; font-weight: 720; margin: 0; letter-spacing: -0.01em; }
+    .card-desc  { font-size: 0.93rem; opacity: 0.65; margin: 6px 0 0 0; line-height: 1.35; }
 
-    /* 上方小標 */
-    .subtle { opacity: 0.75; font-size: 0.95rem; }
+    /* 小分隔空白 */
+    .spacer { height: 10px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-def top_bar():
-    if st.session_state["page"] != "home":
-        col1, col2 = st.columns([1, 6])
-        with col1:
-            if st.button("⬅ 回首頁", use_container_width=True):
-                go("home")
-        with col2:
-            st.markdown('<div class="subtle">🧡 橘貓代購｜客戶系統</div>', unsafe_allow_html=True)
-
 def card_button(key, title, desc, icon, target):
-    label = f"{icon}  {title}\n\n{desc}"
-    # 用 label 方式呈現（兩行），搭配 CSS 變卡片
-    if st.button(label, key=key, use_container_width=True):
+    # 用 HTML 排版讓卡片更像「產品介面」
+    html = f"""
+    <div class="card-wrap">
+      <div class="card-ico">{icon}</div>
+      <div>
+        <div class="card-title">{title}</div>
+        <div class="card-desc">{desc}</div>
+      </div>
+    </div>
+    """
+    if st.button(html, key=key, use_container_width=True):
         go(target)
 
 # ---- 首頁 ----
 if st.session_state["page"] == "home":
-    st.markdown("## 🧡 橘貓代購｜客戶系統")
-    st.markdown('<div class="subtle">請先選擇你要使用的功能</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-title">橘貓代購｜客戶系統</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-sub">請先選擇你要使用的功能</div>', unsafe_allow_html=True)
+    st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
     st.write("")
 
     # 兩欄卡片（最後一個滿版）
