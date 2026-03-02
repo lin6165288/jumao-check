@@ -355,7 +355,8 @@ def page_feedback():
 
 # =============================
 # =============================
-# 首頁大選單導覽（你要的：先選功能才進頁面）
+# =============================
+# 首頁大卡片導覽（更好看）
 # =============================
 if "page" not in st.session_state:
     st.session_state["page"] = "home"
@@ -364,46 +365,112 @@ def go(page_name: str):
     st.session_state["page"] = page_name
     st.rerun()
 
+# ---- CSS：卡片按鈕美化（純前端，不用套件）----
+st.markdown(
+    """
+    <style>
+    /* 讓整體看起來更乾淨 */
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 880px; }
+
+    /* 隱藏 Streamlit button 原本的邊框陰影 */
+    div.stButton > button {
+        border: 1px solid rgba(49, 51, 63, 0.12);
+        border-radius: 18px;
+        padding: 18px 18px;
+        height: auto;
+        width: 100%;
+        background: white;
+        transition: 0.15s ease-in-out;
+        text-align: left;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        border-color: rgba(49, 51, 63, 0.22);
+        box-shadow: 0 10px 24px rgba(0,0,0,0.08);
+    }
+    div.stButton > button:active {
+        transform: translateY(0px);
+    }
+
+    /* 讓按鈕內容更像卡片 */
+    .card-title { font-size: 1.05rem; font-weight: 700; margin: 0; }
+    .card-desc  { font-size: 0.92rem; opacity: 0.7; margin: 6px 0 0 0; }
+
+    /* 上方小標 */
+    .subtle { opacity: 0.75; font-size: 0.95rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 def top_bar():
-    # 不是首頁就顯示返回
     if st.session_state["page"] != "home":
-        col1, col2 = st.columns([1, 5])
+        col1, col2 = st.columns([1, 6])
         with col1:
-            if st.button("⬅ 回首頁"):
+            if st.button("⬅ 回首頁", use_container_width=True):
                 go("home")
         with col2:
-            st.caption("🧡 橘貓代購｜客戶系統")
+            st.markdown('<div class="subtle">🧡 橘貓代購｜客戶系統</div>', unsafe_allow_html=True)
 
-# ----- 首頁 -----
+def card_button(key, title, desc, icon, target):
+    label = f"{icon}  {title}\n\n{desc}"
+    # 用 label 方式呈現（兩行），搭配 CSS 變卡片
+    if st.button(label, key=key, use_container_width=True):
+        go(target)
+
+# ---- 首頁 ----
 if st.session_state["page"] == "home":
-    st.title("🧡 橘貓代購｜客戶系統")
-    st.caption("請先選擇你要使用的功能")
-
+    st.markdown("## 🧡 橘貓代購｜客戶系統")
+    st.markdown('<div class="subtle">請先選擇你要使用的功能</div>', unsafe_allow_html=True)
     st.write("")
 
-    # 兩排大按鈕（你可以調整排版）
-    r1 = st.columns(2)
-    with r1[0]:
-        if st.button("🔎 訂單查詢", use_container_width=True):
-            go("orders")
-    with r1[1]:
-        if st.button("📘 常見問題（QA）", use_container_width=True):
-            go("faq")
+    # 兩欄卡片（最後一個滿版）
+    c1, c2 = st.columns(2)
+    with c1:
+        card_button(
+            "card_orders",
+            "訂單查詢",
+            "查詢包裹到貨/運回狀態與重量統計",
+            "🔎",
+            "orders",
+        )
+    with c2:
+        card_button(
+            "card_faq",
+            "常見問題（QA）",
+            "查看橘貓整理的官方常見問題與說明",
+            "📘",
+            "faq",
+        )
 
-    r2 = st.columns(2)
-    with r2[0]:
-        if st.button("⭐ VIP 會員", use_container_width=True):
-            go("vip")
-    with r2[1]:
-        if st.button("🧮 自動報價", use_container_width=True):
-            go("quote")
+    c3, c4 = st.columns(2)
+    with c3:
+        card_button(
+            "card_vip",
+            "VIP 會員",
+            "查看 VIP 等級、儲值餘額（由後台設定）",
+            "⭐",
+            "vip",
+        )
+    with c4:
+        card_button(
+            "card_quote",
+            "自動報價",
+            "輸入人民幣金額，快速試算參考報價",
+            "🧮",
+            "quote",
+        )
 
-    r3 = st.columns(1)
-    with r3[0]:
-        if st.button("📮 匿名回饋", use_container_width=True):
-            go("feedback")
+    st.write("")
+    card_button(
+        "card_feedback",
+        "匿名回饋",
+        "留下建議或想法，幫橘貓把系統變得更好",
+        "📮",
+        "feedback",
+    )
 
-# ----- 內頁 -----
+# ---- 內頁 ----
 else:
     top_bar()
 
@@ -419,5 +486,4 @@ else:
     elif page == "feedback":
         page_feedback()
     else:
-        # fallback
         go("home")
