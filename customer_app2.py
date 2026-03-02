@@ -385,71 +385,47 @@ def go(page_name: str):
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 940px; }
+    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 920px; }
 
-    /* 整體背景加一點淡淡的灰藍感（高級） */
-    [data-testid="stAppViewContainer"] {
-      background: radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,0.06), transparent 60%),
-                  radial-gradient(900px 500px at 80% 10%, rgba(16,185,129,0.05), transparent 55%),
-                  linear-gradient(180deg, rgba(248,250,252,1), rgba(255,255,255,1));
-    }
-
-    .hero-title { font-size: 1.6rem; font-weight: 760; letter-spacing: -0.02em; margin: 0; color: rgba(15,23,42,0.95); }
-    .hero-sub   { margin-top: 8px; font-size: 0.98rem; opacity: 0.7; color: rgba(15,23,42,0.85); }
+    .hero-title { font-size: 1.55rem; font-weight: 750; letter-spacing: -0.02em; margin: 0; }
+    .hero-sub   { margin-top: 6px; font-size: 0.98rem; opacity: 0.65; }
     .spacer { height: 10px; }
 
-    /* 公告卡（Info Card） */
-    .notice {
-      border: 1px solid rgba(15, 23, 42, 0.10);
-      border-radius: 18px;
-      padding: 16px 16px;
-      background: rgba(255,255,255,0.75);
-      backdrop-filter: blur(8px);
-      box-shadow: 0 10px 24px rgba(2,6,23,0.06);
-      margin: 14px 0 18px 0;
-    }
-    .notice-title { font-weight: 740; font-size: 1.02rem; margin: 0 0 6px 0; color: rgba(15,23,42,0.95); }
-    .notice-body  { font-size: 0.95rem; opacity: 0.78; line-height: 1.45; white-space: pre-line; }
-
-    /* 卡片按鈕：淡漸層、細邊框、更高級 */
+    /* 讓每個卡片按鈕看起來像高級卡片 */
     div.stButton > button {
         width: 100%;
         text-align: left;
         border: 1px solid rgba(15, 23, 42, 0.12);
         border-radius: 18px;
         padding: 18px 18px;
-        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
-        backdrop-filter: blur(6px);
+        background: rgba(255,255,255,0.92);
         transition: 0.16s ease;
         box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
-        white-space: normal;
+        white-space: normal;   /* 允許換行 */
         line-height: 1.25;
     }
     div.stButton > button:hover {
         border-color: rgba(15, 23, 42, 0.22);
-        box-shadow: 0 14px 30px rgba(2, 6, 23, 0.10);
+        background: rgba(255,255,255,1);
+        box-shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
         transform: translateY(-2px);
     }
     div.stButton > button:active {
         transform: translateY(0px);
-        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.10);
+        box-shadow: 0 6px 16px rgba(2, 6, 23, 0.08);
     }
 
-    /* 讓卡片文字更像產品 */
-    .card-title { font-size: 1.02rem; font-weight: 740; margin: 0; letter-spacing: -0.01em; color: rgba(15,23,42,0.95); }
-    .card-desc  { font-size: 0.93rem; opacity: 0.68; margin-top: 6px; line-height: 1.35; color: rgba(15,23,42,0.85); }
-    .card-arrow { float: right; opacity: 0.35; font-weight: 700; }
-
-    /* 讓 emoji icon 看起來像有留白 */
-    .card-ico { opacity: 0.95; }
+    /* 卡片內文排版：第一行大標，第二行描述 */
+    .card-title { font-size: 1.02rem; font-weight: 720; margin: 0; letter-spacing: -0.01em; }
+    .card-desc  { font-size: 0.93rem; opacity: 0.65; margin-top: 6px; line-height: 1.35; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
 def card_button(key, title, desc, icon, target):
-    label = f"{icon}  {title}   ›\n\n{desc}"
+    # 用兩行文字做卡片：第一行標題、第二行描述
+    label = f"{icon}  {title}\n\n{desc}"
     if st.button(label, key=key, use_container_width=True):
         go(target)
         
