@@ -462,31 +462,29 @@ if st.session_state["page"] == "home":
     st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
     render_notice()
 
-    def render_notice():
-    # 有公告表就讀，沒有就顯示預設
-    title = "📌 公告"
-    content = "如需提前運回或有任何問題，請私訊橘貓。\n系統資料約 1~2 日更新一次。"
+    # ===== 公告卡（直接寫在首頁，避免縮排錯誤）=====
+    notice_title = "📌 公告"
+    notice_content = "如需提前運回或有任何問題，請私訊橘貓。\n系統資料約 1~2 日更新一次。"
 
     try:
         conn = get_connection()
-        df = pd.read_sql("SELECT title, content FROM settings_announcements WHERE id=1", conn)
+        df_notice = pd.read_sql("SELECT title, content FROM settings_announcements WHERE id=1", conn)
         conn.close()
-        if not df.empty:
-            title = df.iloc[0]["title"]
-            content = df.iloc[0]["content"]
+        if not df_notice.empty:
+            notice_title = df_notice.iloc[0]["title"]
+            notice_content = df_notice.iloc[0]["content"]
     except Exception:
         pass
 
     st.markdown(
         f"""
         <div class="notice">
-          <div class="notice-title">{title}</div>
-          <div class="notice-body">{content}</div>
+          <div class="notice-title">{notice_title}</div>
+          <div class="notice-body">{notice_content}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
     
     # 兩欄卡片（最後一個滿版）
     c1, c2 = st.columns(2)
