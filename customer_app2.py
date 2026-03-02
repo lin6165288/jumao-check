@@ -71,6 +71,14 @@ def ensure_client_tables():
           staff_note VARCHAR(255) NULL
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
         """,
+        """
+        CREATE TABLE IF NOT EXISTS settings_announcements (
+          id INT PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          updated_at DATE NULL
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        """,
     ]
 
     try:
@@ -84,6 +92,13 @@ def ensure_client_tables():
             """
             INSERT INTO pricing_settings (id, sell_rate, vip1_discount, vip2_discount, vip3_discount, updated_at)
             VALUES (1, 4.8, 0.90, 0.85, 0.80, CURDATE())
+            ON DUPLICATE KEY UPDATE id=id;
+            """
+        )
+        cur.execute(
+            """
+            INSERT INTO settings_announcements (id, title, content, updated_at)
+            VALUES (1, '📌 公告', '如需提前運回或有任何問題，請私訊橘貓。\n系統資料約 1~2 日更新一次。', CURDATE())
             ON DUPLICATE KEY UPDATE id=id;
             """
         )
@@ -353,6 +368,8 @@ def page_feedback():
         except Error as e:
             st.error(f"寫入失敗：{e}")
 
+
+
 # =============================
 # =============================
 # =============================
@@ -368,39 +385,63 @@ def go(page_name: str):
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 920px; }
+    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 940px; }
 
-    .hero-title { font-size: 1.55rem; font-weight: 750; letter-spacing: -0.02em; margin: 0; }
-    .hero-sub   { margin-top: 6px; font-size: 0.98rem; opacity: 0.65; }
+    /* 整體背景加一點淡淡的灰藍感（高級） */
+    [data-testid="stAppViewContainer"] {
+      background: radial-gradient(1200px 600px at 20% 0%, rgba(59,130,246,0.06), transparent 60%),
+                  radial-gradient(900px 500px at 80% 10%, rgba(16,185,129,0.05), transparent 55%),
+                  linear-gradient(180deg, rgba(248,250,252,1), rgba(255,255,255,1));
+    }
+
+    .hero-title { font-size: 1.6rem; font-weight: 760; letter-spacing: -0.02em; margin: 0; color: rgba(15,23,42,0.95); }
+    .hero-sub   { margin-top: 8px; font-size: 0.98rem; opacity: 0.7; color: rgba(15,23,42,0.85); }
     .spacer { height: 10px; }
 
-    /* 讓每個卡片按鈕看起來像高級卡片 */
+    /* 公告卡（Info Card） */
+    .notice {
+      border: 1px solid rgba(15, 23, 42, 0.10);
+      border-radius: 18px;
+      padding: 16px 16px;
+      background: rgba(255,255,255,0.75);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 24px rgba(2,6,23,0.06);
+      margin: 14px 0 18px 0;
+    }
+    .notice-title { font-weight: 740; font-size: 1.02rem; margin: 0 0 6px 0; color: rgba(15,23,42,0.95); }
+    .notice-body  { font-size: 0.95rem; opacity: 0.78; line-height: 1.45; white-space: pre-line; }
+
+    /* 卡片按鈕：淡漸層、細邊框、更高級 */
     div.stButton > button {
         width: 100%;
         text-align: left;
         border: 1px solid rgba(15, 23, 42, 0.12);
         border-radius: 18px;
         padding: 18px 18px;
-        background: rgba(255,255,255,0.92);
+        background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78));
+        backdrop-filter: blur(6px);
         transition: 0.16s ease;
         box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
-        white-space: normal;   /* 允許換行 */
+        white-space: normal;
         line-height: 1.25;
     }
     div.stButton > button:hover {
         border-color: rgba(15, 23, 42, 0.22);
-        background: rgba(255,255,255,1);
-        box-shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
+        box-shadow: 0 14px 30px rgba(2, 6, 23, 0.10);
         transform: translateY(-2px);
     }
     div.stButton > button:active {
         transform: translateY(0px);
-        box-shadow: 0 6px 16px rgba(2, 6, 23, 0.08);
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.10);
     }
 
-    /* 卡片內文排版：第一行大標，第二行描述 */
-    .card-title { font-size: 1.02rem; font-weight: 720; margin: 0; letter-spacing: -0.01em; }
-    .card-desc  { font-size: 0.93rem; opacity: 0.65; margin-top: 6px; line-height: 1.35; }
+    /* 讓卡片文字更像產品 */
+    .card-title { font-size: 1.02rem; font-weight: 740; margin: 0; letter-spacing: -0.01em; color: rgba(15,23,42,0.95); }
+    .card-desc  { font-size: 0.93rem; opacity: 0.68; margin-top: 6px; line-height: 1.35; color: rgba(15,23,42,0.85); }
+    .card-arrow { float: right; opacity: 0.35; font-weight: 700; }
+
+    /* 讓 emoji icon 看起來像有留白 */
+    .card-ico { opacity: 0.95; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -408,8 +449,7 @@ st.markdown(
 
 
 def card_button(key, title, desc, icon, target):
-    # 用兩行文字做卡片：第一行標題、第二行描述
-    label = f"{icon}  {title}\n\n{desc}"
+    label = f"{icon}  {title}   ›\n\n{desc}"
     if st.button(label, key=key, use_container_width=True):
         go(target)
 
@@ -419,8 +459,34 @@ if st.session_state["page"] == "home":
     st.markdown('<div class="hero-title">橘貓代購｜客戶系統</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-sub">請先選擇你要使用的功能</div>', unsafe_allow_html=True)
     st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-    st.write("")
+    render_notice()
 
+    def render_notice():
+    # 有公告表就讀，沒有就顯示預設
+    title = "📌 公告"
+    content = "如需提前運回或有任何問題，請私訊橘貓。\n系統資料約 1~2 日更新一次。"
+
+    try:
+        conn = get_connection()
+        df = pd.read_sql("SELECT title, content FROM settings_announcements WHERE id=1", conn)
+        conn.close()
+        if not df.empty:
+            title = df.iloc[0]["title"]
+            content = df.iloc[0]["content"]
+    except Exception:
+        pass
+
+    st.markdown(
+        f"""
+        <div class="notice">
+          <div class="notice-title">{title}</div>
+          <div class="notice-body">{content}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    
     # 兩欄卡片（最後一個滿版）
     c1, c2 = st.columns(2)
     with c1:
