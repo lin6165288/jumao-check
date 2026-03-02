@@ -420,46 +420,11 @@ st.markdown(
     }
     .card-title { font-size: 1.02rem; font-weight: 720; margin: 0; letter-spacing: -0.01em; }
     .card-desc  { font-size: 0.93rem; opacity: 0.65; margin: 6px 0 0 0; line-height: 1.35; }
-
-    /* 把 Streamlit 的按鈕變成「透明覆蓋層」 */
-    .card-btn div.stButton > button {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      opacity: 0;
-      padding: 0;
-      margin: 0;
-      border: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
 )
 
 def card_button(key, title, desc, icon, target):
-    # 先畫出卡片外觀
-    st.markdown(
-        f"""
-        <div class="card">
-          <div class="card-wrap">
-            <div class="card-ico">{icon}</div>
-            <div>
-              <div class="card-title">{title}</div>
-              <div class="card-desc">{desc}</div>
-            </div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    # 再放一個透明按鈕覆蓋在同一個位置
-    # 用 container 把按鈕包起來，套上 card-btn class
-    with st.container():
-        st.markdown('<div class="card-btn">', unsafe_allow_html=True)
-        clicked = st.button(" ", key=key)  # 文字用空白即可
-        st.markdown("</div>", unsafe_allow_html=True)
-    if clicked:
+    label = f"{icon}  {title}   ›\n\n{desc}"
+    if st.button(label, key=key, use_container_width=True):
         go(target)
 
         
@@ -471,11 +436,9 @@ if st.session_state["page"] == "home":
     st.markdown('<div class="hero-sub">請先選擇你要使用的功能</div>', unsafe_allow_html=True)
     st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
 
-
-    # ===== 公告卡（直接寫在首頁，避免縮排錯誤）=====
+    # 公告卡
     notice_title = "📌 公告"
     notice_content = "如需提前運回或有任何問題，請私訊橘貓。\n系統資料約 1~2 日更新一次。"
-
     try:
         conn = get_connection()
         df_notice = pd.read_sql("SELECT title, content FROM settings_announcements WHERE id=1", conn)
@@ -495,53 +458,22 @@ if st.session_state["page"] == "home":
         """,
         unsafe_allow_html=True,
     )
-    
-    # 兩欄卡片（最後一個滿版）
+
+    # 功能卡片（注意：每個 card_button 只會產生 1 顆 button，不會多小框）
     c1, c2 = st.columns(2)
     with c1:
-        card_button(
-            "card_orders",
-            "訂單查詢",
-            "查詢包裹到貨/運回狀態與重量統計",
-            "🔎",
-            "orders",
-        )
+        card_button("card_orders", "訂單查詢", "查詢包裹到貨/運回狀態與重量統計", "🔎", "orders")
     with c2:
-        card_button(
-            "card_faq",
-            "常見問題（QA）",
-            "查看橘貓整理的官方常見問題與說明",
-            "📘",
-            "faq",
-        )
+        card_button("card_faq", "常見問題（QA）", "查看橘貓整理的官方常見問題與說明", "📘", "faq")
 
     c3, c4 = st.columns(2)
     with c3:
-        card_button(
-            "card_vip",
-            "VIP 會員",
-            "查看 VIP 等級、儲值餘額（由後台設定）",
-            "⭐",
-            "vip",
-        )
+        card_button("card_vip", "VIP 會員", "查看 VIP 等級、儲值餘額（由後台設定）", "⭐", "vip")
     with c4:
-        card_button(
-            "card_quote",
-            "自動報價",
-            "輸入人民幣金額，快速試算參考報價",
-            "🧮",
-            "quote",
-        )
+        card_button("card_quote", "自動報價", "輸入人民幣金額，快速試算參考報價", "🧮", "quote")
 
     st.write("")
-    card_button(
-        "card_feedback",
-        "匿名回饋",
-        "留下建議或想法，幫橘貓把系統變得更好",
-        "📮",
-        "feedback",
-    )
-
+    card_button("card_feedback", "匿名回饋", "留下建議或想法，幫橘貓系統變得更好", "📮", "feedback")
 # ---- 內頁 ----
 else:
     top_bar()
