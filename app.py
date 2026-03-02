@@ -254,7 +254,21 @@ conn = mysql.connector.connect(
 )
 
 st.success("✅ DB connected")
-SELECT @@hostname AS host, @@port AS port, DATABASE() AS db, CURRENT_USER() AS user;
+
+check_sql = """
+SELECT @@hostname AS host,
+       @@port     AS port,
+       DATABASE() AS db,
+       CURRENT_USER() AS user;
+"""
+
+try:
+    df_check = pd.read_sql(check_sql, conn)
+    st.info("✅ DB 連線資訊：")
+    st.dataframe(df_check)
+except Exception as e:
+    st.error(f"❌ 無法查詢 DB 連線資訊：{e}")
+    
 #歷史名字搜尋
 
 def get_customer_names(conn):
@@ -1501,6 +1515,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
