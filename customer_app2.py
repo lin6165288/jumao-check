@@ -393,7 +393,7 @@ def top_bar():
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 2.2rem; padding-bottom: 2.2rem; max-width: 940px; }
+    .block-container { padding-top: 5rem; padding-bottom: 2.2rem; max-width: 940px; }
 
     /* 淡淡背景（簡約高級） */
     [data-testid="stAppViewContainer"] {
