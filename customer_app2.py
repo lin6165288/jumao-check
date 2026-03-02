@@ -453,14 +453,14 @@ def card_button(key, title, desc, icon, target):
     if st.button(label, key=key, use_container_width=True):
         go(target)
         
-render_notice()
+
 
 # ---- 首頁 ----
 if st.session_state["page"] == "home":
     st.markdown('<div class="hero-title">橘貓代購｜客戶系統</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-sub">請先選擇你要使用的功能</div>', unsafe_allow_html=True)
     st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-    render_notice()
+
 
     # ===== 公告卡（直接寫在首頁，避免縮排錯誤）=====
     notice_title = "📌 公告"
