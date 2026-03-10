@@ -424,7 +424,6 @@ def page_order_query():
     st.title("📦 查詢訂單")
     st.caption("輸入名稱後查詢訂單，並可選取欲提前言運回的訂單與船班。")
 
-    available_shipping_batches = get_recent_shipping_batches(delivery_method)
     
     if not available_shipping_batches:
         st.warning(f"目前沒有可選擇的{delivery_method}船班。")
@@ -710,6 +709,9 @@ def page_order_query():
         info1.metric("總包裹件數", f"{total_count} 件")
         info2.metric("總重量", f"{total_weight:.2f} kg")
         info3.metric("預估運費", f"NT$ {estimated_fee:,.0f}")
+        
+        available_shipping_batches = get_recent_shipping_batches(delivery_method)
+
 
         detail_parts = []
         if forwarding_billable > 0:
