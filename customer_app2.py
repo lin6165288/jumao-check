@@ -15,7 +15,7 @@ st.set_page_config(
 # =============================
 # 資料庫連線
 # =============================
-ddef get_connection():
+def get_connection():
     conn = mysql.connector.connect(
         host=st.secrets["mysql"]["host"],
         port=int(st.secrets["mysql"]["port"]),
