@@ -761,7 +761,7 @@ def page_order_query():
             with success_box_placeholder.container():
                 st.success(st.session_state.get("success_box_message", "已送出申請！"))
                 st.info("若要取消運回，請直接私訊橘貓協助處理。")
-            else:
+        else:
                 st.caption("尚未選取欲運回訂單。")
 
 def page_faq():
