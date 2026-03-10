@@ -463,6 +463,7 @@ def page_order_query():
     st.session_state.setdefault("client_query_submitted", False)
     st.session_state.setdefault("client_query_df", None)
     st.session_state.setdefault("return_selector_reset_counter", 0)
+    st.session_state.setdefault("return_request_sent", False)
 
     st.markdown("### 🔍 查詢條件")
     with st.form("order_query_form"):
@@ -546,6 +547,7 @@ def page_order_query():
                 df["amount_rmb"] = pd.to_numeric(df["amount_rmb"], errors="coerce").fillna(0.0)
 
             st.session_state["client_query_df"] = df
+            st.session_state["return_request_sent"] = False
 
         except Exception as e:
             st.session_state["client_query_df"] = None
@@ -729,7 +731,11 @@ def page_order_query():
                 key="client_selected_shipping_batch"
             )
 
-        if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
+        if st.button(
+            "✅ 確認這批欲運回訂單",
+            use_container_width=True,
+            disabled=st.session_state.get("return_request_sent", False)
+        ):
             if not selected_batch:
                 st.warning("請先選擇欲運回的船班。")
             else:
@@ -744,16 +750,9 @@ def page_order_query():
                 )
 
                 if ok:
-                    st.session_state["flash_toast"] = f"已送出運回申請！"
-                    st.session_state["flash_info"] = "若要取消運回，請直接私訊橘貓協助處理。"
-
-                    st.session_state["return_selector_reset_counter"] += 1
-                    if "client_selected_shipping_batch" in st.session_state:
-                        del st.session_state["client_selected_shipping_batch"]
-                    if "client_delivery_method" in st.session_state:
-                        del st.session_state["client_delivery_method"]
-
-                    st.rerun()
+                    st.toast(f"已送出運回申請！申請編號：#{request_id}", icon="✅")
+                    st.info("若要取消運回，請直接私訊橘貓協助處理。")
+                    st.session_state["return_request_sent"] = True
                 else:
                     st.error(f"送出失敗：{err}")
     else:
