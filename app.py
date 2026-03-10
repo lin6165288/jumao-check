@@ -49,6 +49,37 @@ def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last
     conn.commit()
 
 
+def ensure_frontend_config_tables(conn):
+    ddl1 = """
+    CREATE TABLE IF NOT EXISTS site_settings (
+      setting_key VARCHAR(100) PRIMARY KEY,
+      setting_value TEXT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+
+    ddl2 = """
+    CREATE TABLE IF NOT EXISTS shipping_batches (
+      batch_id INT AUTO_INCREMENT PRIMARY KEY,
+      batch_text VARCHAR(255) NOT NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(ddl1)
+        cur.execute(ddl2)
+
+        # 預設匯率（若不存在才插入）
+        cur.execute("""
+            INSERT IGNORE INTO site_settings (setting_key, setting_value)
+            VALUES ('current_exchange_rate', '4.78')
+        """)
+
+    conn.commit()
 
 
 def ensure_failed_orders_table(conn):
@@ -374,6 +405,7 @@ cursor.close()
 
 st.success("✅ DB connected")
 ensure_return_request_tables(conn)
+ensure_frontend_config_tables(conn)
     
 #歷史名字搜尋
 
@@ -395,7 +427,9 @@ st.title("🐾 橘貓代購｜訂單管理系統")
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
-    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息", "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價", "📮 匿名回饋管理"
+    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息",
+    "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價",
+    "📢 前台公告管理", "📮 匿名回饋管理"
 ])
 
 # ===== 功能實作 =====
@@ -1635,6 +1669,131 @@ elif menu == "💴 快速報價":
         )
         components.html(html_block, height=60)
 
+# "前台公告管理":
+elif menu == "📢 前台公告管理":
+    st.subheader("📢 前台公告管理")
+
+    # ===== 讀取目前匯率 =====
+    df_rate = pd.read_sql(
+        "SELECT setting_value FROM site_settings WHERE setting_key = 'current_exchange_rate'",
+        conn
+    )
+    current_rate = 4.78
+    if not df_rate.empty:
+        try:
+            current_rate = float(df_rate.iloc[0]["setting_value"])
+        except:
+            current_rate = 4.78
+
+    st.markdown("### 💱 當前匯率")
+    new_rate = st.number_input("前台顯示匯率", min_value=0.0, value=float(current_rate), step=0.01)
+
+    if st.button("💾 儲存匯率", use_container_width=True):
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO site_settings (setting_key, setting_value)
+                    VALUES ('current_exchange_rate', %s)
+                    ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                """, (str(new_rate),))
+            conn.commit()
+            st.success("已更新前台顯示匯率。")
+            st.rerun()
+        except Exception as e:
+            st.error(f"更新失敗：{e}")
+
+    st.divider()
+
+    # ===== 新增船班 =====
+    st.markdown("### 🚢 近期運回船班")
+
+    with st.form("add_shipping_batch_form"):
+        batch_text = st.text_input("船班文字", placeholder="例如：3/20 海快船班｜預計 3/23-3/24 到台")
+        sort_order = st.number_input("排序", min_value=0, step=1, value=0)
+        submitted = st.form_submit_button("➕ 新增船班")
+
+    if submitted:
+        if not batch_text.strip():
+            st.warning("請輸入船班文字。")
+        else:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO shipping_batches (batch_text, sort_order, is_active)
+                        VALUES (%s, %s, 1)
+                    """, (batch_text.strip(), int(sort_order)))
+                conn.commit()
+                st.success("已新增船班。")
+                st.rerun()
+            except Exception as e:
+                st.error(f"新增失敗：{e}")
+
+    # ===== 顯示目前船班 =====
+    df_batches = pd.read_sql("""
+        SELECT batch_id, batch_text, sort_order, is_active, updated_at
+        FROM shipping_batches
+        ORDER BY is_active DESC, sort_order ASC, batch_id DESC
+    """, conn)
+
+    if df_batches.empty:
+        st.info("目前沒有任何船班公告。")
+    else:
+        st.markdown("### 📋 目前船班列表")
+
+        df_show = df_batches.copy()
+        df_show["is_active"] = df_show["is_active"].apply(lambda x: "顯示中" if x else "已隱藏")
+        df_show = df_show.rename(columns={
+            "batch_id": "編號",
+            "batch_text": "船班內容",
+            "sort_order": "排序",
+            "is_active": "狀態",
+            "updated_at": "更新時間"
+        })
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+        batch_ids = df_batches["batch_id"].tolist()
+        picked_batch_id = st.selectbox("選擇要操作的船班編號", batch_ids)
+
+        picked_row = df_batches[df_batches["batch_id"] == picked_batch_id].iloc[0]
+
+        with st.form("edit_shipping_batch_form"):
+            edit_text = st.text_input("修改船班內容", value=picked_row["batch_text"])
+            edit_sort = st.number_input("修改排序", min_value=0, step=1, value=int(picked_row["sort_order"]))
+            edit_active = st.checkbox("前台顯示", value=bool(picked_row["is_active"]))
+            save_batch = st.form_submit_button("💾 儲存船班修改")
+
+        if save_batch:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE shipping_batches
+                        SET batch_text = %s,
+                            sort_order = %s,
+                            is_active = %s
+                        WHERE batch_id = %s
+                    """, (
+                        edit_text.strip(),
+                        int(edit_sort),
+                        int(edit_active),
+                        int(picked_batch_id)
+                    ))
+                conn.commit()
+                st.success("已更新船班。")
+                st.rerun()
+            except Exception as e:
+                st.error(f"更新失敗：{e}")
+
+        if st.button("🗑 刪除此船班", use_container_width=True):
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM shipping_batches WHERE batch_id = %s", (int(picked_batch_id),))
+                conn.commit()
+                st.success("已刪除船班。")
+                st.rerun()
+            except Exception as e:
+                st.error(f"刪除失敗：{e}")
+
+
 
 
 # "匿名回饋管理":
@@ -1681,6 +1840,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
