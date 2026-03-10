@@ -73,7 +73,7 @@ def get_recent_shipping_batches(delivery_method=None):
         if df.empty:
             return []
         return df["batch_text"].tolist()
-    except:
+    except Exception:
         return []
     finally:
         conn.close()
@@ -682,7 +682,7 @@ def page_order_query():
 
     selected_df = edited_df[edited_df["選取"] == True].copy()
 
-    if not selected_df.empty:
+        if not selected_df.empty:
         selected_df = selected_df.rename(columns={
             "訂單編號": "order_id",
             "下單日期": "order_time",
@@ -702,16 +702,16 @@ def page_order_query():
             key="client_delivery_method"
         )
 
-        estimated_fee, billable_weight, forwarding_billable, other_billable = calc_estimated_shipping_fee(selected_df, delivery_method)
+        estimated_fee, billable_weight, forwarding_billable, other_billable = calc_estimated_shipping_fee(
+            selected_df,
+            delivery_method
+        )
 
         st.markdown("#### 📦 欲運回資訊")
         info1, info2, info3 = st.columns(3)
         info1.metric("總包裹件數", f"{total_count} 件")
         info2.metric("總重量", f"{total_weight:.2f} kg")
         info3.metric("預估運費", f"NT$ {estimated_fee:,.0f}")
-        
-        available_shipping_batches = get_recent_shipping_batches(delivery_method)
-
 
         detail_parts = []
         if forwarding_billable > 0:
@@ -723,7 +723,9 @@ def page_order_query():
         elif delivery_method == "賣貨便":
             detail_parts.append("賣貨便 +38")
 
-        st.caption("＋".join(detail_parts))
+        if detail_parts:
+            st.caption("＋".join(detail_parts))
+
         st.caption("純集運：每公斤 90 元，最低 1 公斤起算，並以 0.5 公斤為單位計費；代購商品：每公斤 70 元，以 0.5 公斤為單位計費；宅配加 100 元，賣貨便加 38 元。")
 
         selected_table = selected_df[["order_id", "order_time", "platform", "tracking_number", "weight_kg"]].copy()
@@ -736,13 +738,22 @@ def page_order_query():
         })
         st.dataframe(selected_table, use_container_width=True, hide_index=True)
 
-        selected_batch = st.selectbox(
-            "請選擇欲運回的船班",
-            options=available_shipping_batches,
-            index=None,
-            placeholder="請選擇船班",
-            key="client_selected_shipping_batch"
-        )
+        available_shipping_batches = get_recent_shipping_batches(delivery_method)
+
+        if delivery_method == "面交/自取":
+            st.info("面交/自取不需選擇船班。")
+            selected_batch = "面交/自取"
+        elif not available_shipping_batches:
+            st.warning(f"目前沒有可選擇的{delivery_method}船班。")
+            selected_batch = None
+        else:
+            selected_batch = st.selectbox(
+                "請選擇欲運回的船班",
+                options=available_shipping_batches,
+                index=None,
+                placeholder="請選擇船班",
+                key="client_selected_shipping_batch"
+            )
 
         if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
             if not selected_batch:
@@ -762,7 +773,6 @@ def page_order_query():
                     st.success(f"已送出運回申請！申請編號：#{request_id}")
                     st.info("若要取消運回，請直接私訊橘貓協助處理。")
 
-                    # 送出後清空前台勾選/船班，避免重複送出
                     st.session_state["return_selector_reset_counter"] += 1
                     if "client_selected_shipping_batch" in st.session_state:
                         del st.session_state["client_selected_shipping_batch"]
@@ -772,8 +782,6 @@ def page_order_query():
                     st.rerun()
                 else:
                     st.error(f"送出失敗：{err}")
-
-        st.caption("若要取消運回，請直接私訊橘貓協助處理。")
     else:
         st.caption("尚未選取欲運回訂單。")
 
