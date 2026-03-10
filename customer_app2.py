@@ -418,9 +418,15 @@ def page_order_query():
     st.title("📦 查詢訂單")
     st.caption("輸入名稱後查詢訂單，並可選取欲提前運回的訂單與船班。")
     
-    if st.session_state.get("flash_info"):
-        st.info(st.session_state["flash_info"])
-        st.session_state["flash_info"] = None
+    if st.session_state.get("show_success_popup", False):
+        with st.container(border=True):
+            st.success(st.session_state.get("success_popup_message", "已送出申請！"))
+            st.info("若要取消運回，請直接私訊橘貓協助處理。")
+
+            if st.button("確定", key="close_success_popup", use_container_width=True):
+                st.session_state["show_success_popup"] = False
+                st.session_state["success_popup_message"] = ""
+                st.rerun()
 
     def round_up_half_kg(weight):
         if weight <= 0:
@@ -464,6 +470,8 @@ def page_order_query():
     st.session_state.setdefault("client_query_df", None)
     st.session_state.setdefault("return_selector_reset_counter", 0)
     st.session_state.setdefault("return_request_sent", False)
+    st.session_state.setdefault("show_success_popup", False)
+    st.session_state.setdefault("success_popup_message", "")
 
     st.markdown("### 🔍 查詢條件")
     with st.form("order_query_form"):
@@ -750,9 +758,10 @@ def page_order_query():
                 )
 
                 if ok:
-                    st.toast(f"已送出運回申請！申請編號：#{request_id}", icon="✅")
-                    st.info("若要取消運回，請直接私訊橘貓協助處理。")
-                    st.session_state["return_request_sent"] = True
+                  st.session_state["success_popup_message"] = f"已送出運回申請！申請編號：#{request_id}"
+                  st.session_state["show_success_popup"] = True
+                  st.session_state["return_request_sent"] = True
+                  st.rerun()
                 else:
                     st.error(f"送出失敗：{err}")
     else:
