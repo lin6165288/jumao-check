@@ -62,6 +62,7 @@ def ensure_frontend_config_tables(conn):
     CREATE TABLE IF NOT EXISTS shipping_batches (
       batch_id INT AUTO_INCREMENT PRIMARY KEY,
       batch_text VARCHAR(255) NOT NULL,
+      delivery_type VARCHAR(30) NOT NULL DEFAULT 'home_delivery',
       sort_order INT NOT NULL DEFAULT 0,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -73,7 +74,16 @@ def ensure_frontend_config_tables(conn):
         cur.execute(ddl1)
         cur.execute(ddl2)
 
-        # 預設匯率（若不存在才插入）
+        # 舊資料表補欄位用
+        try:
+            cur.execute("""
+                ALTER TABLE shipping_batches
+                ADD COLUMN delivery_type VARCHAR(30) NOT NULL DEFAULT 'home_delivery'
+            """)
+        except Exception:
+            pass
+
+        # 預設匯率
         cur.execute("""
             INSERT IGNORE INTO site_settings (setting_key, setting_value)
             VALUES ('current_exchange_rate', '4.78')
@@ -1708,20 +1718,28 @@ elif menu == "📢 前台公告管理":
     st.markdown("### 🚢 近期運回船班")
 
     with st.form("add_shipping_batch_form"):
+        delivery_type = st.selectbox(
+            "適用運回方式",
+            ["宅配", "賣貨便"],
+            index=0
+        )
         batch_text = st.text_input("船班文字", placeholder="例如：3/20 海快船班｜預計 3/23-3/24 到台")
         sort_order = st.number_input("排序", min_value=0, step=1, value=0)
         submitted = st.form_submit_button("➕ 新增船班")
-
+        
     if submitted:
         if not batch_text.strip():
             st.warning("請輸入船班文字。")
         else:
             try:
                 with conn.cursor() as cur:
+                    
+                    delivery_type_db = "home_delivery" if delivery_type == "宅配" else "shop_delivery"
+
                     cur.execute("""
-                        INSERT INTO shipping_batches (batch_text, sort_order, is_active)
-                        VALUES (%s, %s, 1)
-                    """, (batch_text.strip(), int(sort_order)))
+                        INSERT INTO shipping_batches (batch_text, delivery_type, sort_order, is_active)
+                        VALUES (%s, %s, %s, 1)
+                    """, (batch_text.strip(), delivery_type_db, int(sort_order)))
                 conn.commit()
                 st.success("已新增船班。")
                 st.rerun()
@@ -1730,9 +1748,9 @@ elif menu == "📢 前台公告管理":
 
     # ===== 顯示目前船班 =====
     df_batches = pd.read_sql("""
-        SELECT batch_id, batch_text, sort_order, is_active, updated_at
+        SELECT batch_id, batch_text, delivery_type, sort_order, is_active, updated_at
         FROM shipping_batches
-        ORDER BY is_active DESC, sort_order ASC, batch_id DESC
+        ORDER BY delivery_type ASC, is_active DESC, sort_order ASC, batch_id DESC
     """, conn)
 
     if df_batches.empty:
@@ -1741,10 +1759,14 @@ elif menu == "📢 前台公告管理":
         st.markdown("### 📋 目前船班列表")
 
         df_show = df_batches.copy()
+        df_show["delivery_type"] = df_show["delivery_type"].apply(
+            lambda x: "宅配" if x == "home_delivery" else "賣貨便"
+        )
         df_show["is_active"] = df_show["is_active"].apply(lambda x: "顯示中" if x else "已隱藏")
         df_show = df_show.rename(columns={
             "batch_id": "編號",
             "batch_text": "船班內容",
+            "delivery_type": "適用運回方式",
             "sort_order": "排序",
             "is_active": "狀態",
             "updated_at": "更新時間"
@@ -1756,7 +1778,14 @@ elif menu == "📢 前台公告管理":
 
         picked_row = df_batches[df_batches["batch_id"] == picked_batch_id].iloc[0]
 
+        current_delivery_label = "宅配" if picked_row["delivery_type"] == "home_delivery" else "賣貨便"
+
         with st.form("edit_shipping_batch_form"):
+            edit_delivery_type = st.selectbox(
+                "適用運回方式",
+                ["宅配", "賣貨便"],
+                index=0 if current_delivery_label == "宅配" else 1
+            )
             edit_text = st.text_input("修改船班內容", value=picked_row["batch_text"])
             edit_sort = st.number_input("修改排序", min_value=0, step=1, value=int(picked_row["sort_order"]))
             edit_active = st.checkbox("前台顯示", value=bool(picked_row["is_active"]))
@@ -1765,14 +1794,18 @@ elif menu == "📢 前台公告管理":
         if save_batch:
             try:
                 with conn.cursor() as cur:
+                    edit_delivery_type_db = "home_delivery" if edit_delivery_type == "宅配" else "shop_delivery"
+
                     cur.execute("""
                         UPDATE shipping_batches
                         SET batch_text = %s,
+                            delivery_type = %s,
                             sort_order = %s,
                             is_active = %s
                         WHERE batch_id = %s
                     """, (
                         edit_text.strip(),
+                        edit_delivery_type_db,
                         int(edit_sort),
                         int(edit_active),
                         int(picked_batch_id)
@@ -1840,6 +1873,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
