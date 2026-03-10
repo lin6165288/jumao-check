@@ -252,7 +252,7 @@ def page_home():
 
 def page_order_query():
     st.title("📦 查詢訂單")
-    st.caption("輸入登記包裹用名稱後查詢訂單，並可選取欲運回的訂單與船班。")
+    st.caption("輸入名稱後查詢訂單，並可選取欲提前言運回的訂單與船班。")
 
     available_shipping_batches = [
         "3/12 海快船班｜預計 3/15-3/16 到台",
@@ -278,10 +278,10 @@ def page_order_query():
         customer_name_input = st.text_input(
             "登記包裹用名稱（默認 LINE 名稱）",
             value=st.session_state["client_query_name"],
-            placeholder="請輸入登記包裹用名稱"
+            placeholder="請輸入名稱"
         )
         show_all_history = st.checkbox(
-            "查看過去所有訂單（包含已運回）",
+            "查看過去所有訂單",
             value=st.session_state["client_query_show_all"]
         )
         submitted = st.form_submit_button("查詢訂單")
@@ -425,15 +425,15 @@ def page_order_query():
     # 可被選為欲運回訂單的條件：已到倉且尚未運回
     selectable_df = df[(df["is_arrived"] == 1) & (df["is_returned"] == 0)].copy()
 
-    st.markdown("### 🚢 欲運回訂單設定")
+    st.markdown("### 🚢 欲提前運回訂單申請區")
 
     if selectable_df.empty:
-        st.info("目前沒有可選取運回的訂單（需為已到倉且尚未運回）。")
+        st.info("目前沒有可選取運回的訂單。")
         return
 
-    st.write("只有【已到倉且尚未運回】的包裹可以選取為欲運回訂單。")
+    st.write("只有【已到倉】的包裹可以選取為欲提前運回訂單。")
 
-    st.markdown("#### 請選取欲運回的訂單")
+    st.markdown("#### 請選取欲提前運回的訂單")
 
     selectable_df = selectable_df.copy()
     selectable_df["selected"] = False
@@ -513,11 +513,11 @@ def page_order_query():
             key="client_selected_shipping_batch"
         )
 
-        if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
+        if st.button("✅ 確認送出申請", use_container_width=True):
             if not selected_batch:
                 st.warning("請先選擇欲運回的船班。")
             else:
-                st.success("已確認欲運回訂單（目前先完成前端查詢流程）。")
+                st.success("已完成申請提前運回（目前先完成前端查詢流程）。")
 
         st.caption("若要取消運回，請直接私訊橘貓協助處理。")
     else:
