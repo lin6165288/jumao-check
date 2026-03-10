@@ -25,6 +25,10 @@ def get_connection():
         charset="utf8mb4",
         connection_timeout=10,
     )
+    cur = conn.cursor()
+    cur.execute("SET time_zone = '+08:00'")
+    cur.close()
+    return conn
 
 
 def ensure_return_request_tables(conn):
