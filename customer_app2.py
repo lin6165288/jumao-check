@@ -428,16 +428,7 @@ def page_order_query():
     st.session_state.setdefault("show_success_box", False)
     st.session_state.setdefault("success_box_message", "")
 
-    # ===== 成功提示框（按確定才消失） =====
-    if st.session_state.get("show_success_box", False):
-        with st.container(border=True):
-            st.success(st.session_state.get("success_box_message", "已送出申請！"))
-            st.info("若要取消運回，請直接私訊橘貓協助處理。")
 
-            if st.button("確定", key="close_success_box", use_container_width=True):
-                st.session_state["show_success_box"] = False
-                st.session_state["success_box_message"] = ""
-                st.rerun()
 
     def round_up_half_kg(weight):
         if weight <= 0:
@@ -743,6 +734,9 @@ def page_order_query():
                 key="client_selected_shipping_batch"
             )
 
+        # 預留成功提示框位置
+        success_box_placeholder = st.empty()
+
         if st.button(
             "✅ 確認這批欲運回訂單",
             use_container_width=True,
@@ -765,9 +759,19 @@ def page_order_query():
                     st.session_state["success_box_message"] = f"已送出運回申請！申請編號：#{request_id}"
                     st.session_state["show_success_box"] = True
                     st.session_state["return_request_sent"] = True
-                    st.rerun()
                 else:
                     st.error(f"送出失敗：{err}")
+
+        if st.session_state.get("show_success_box", False):
+            with success_box_placeholder.container():
+                st.success(st.session_state.get("success_box_message", "已送出申請！"))
+                st.info("若要取消運回，請直接私訊橘貓協助處理。")
+
+                if st.button("確定", key="close_success_box", use_container_width=True):
+                    st.session_state["show_success_box"] = False
+                    st.session_state["success_box_message"] = ""
+                    st.rerun()
+            
     else:
         st.caption("尚未選取欲運回訂單。")
 
