@@ -271,6 +271,7 @@ def page_order_query():
     st.session_state.setdefault("client_query_show_all", False)
     st.session_state.setdefault("client_query_submitted", False)
     st.session_state.setdefault("client_query_df", None)
+    st.session_state.setdefault("return_selector_reset_counter", 0)
 
     st.markdown("### 🔍 查詢條件")
     with st.form("order_query_form"):
@@ -455,6 +456,8 @@ def page_order_query():
         "weight_kg": "商品重量(kg)",
     })
 
+    editor_key = f"return_order_selector_table_{st.session_state['return_selector_reset_counter']}"
+
     edited_df = st.data_editor(
         editable_df,
         use_container_width=True,
@@ -467,7 +470,7 @@ def page_order_query():
                 default=False,
             )
         },
-        key="return_order_selector_table"
+        key=editor_key
     )
 
     selected_df = edited_df[edited_df["選取"] == True].copy()
@@ -510,21 +513,13 @@ def page_order_query():
             key="client_selected_shipping_batch"
         )
 
-        c_confirm, c_cancel = st.columns(2)
+        if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
+            if not selected_batch:
+                st.warning("請先選擇欲運回的船班。")
+            else:
+                st.success("已確認欲運回訂單（目前先完成前端查詢流程）。")
 
-        with c_confirm:
-            if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
-                if not selected_batch:
-                    st.warning("請先選擇欲運回的船班。")
-                else:
-                    st.success("已確認欲運回訂單（目前先完成前端查詢流程）。")
-
-        with c_cancel:
-            if st.button("🗑 取消整批欲運回訂單", use_container_width=True):
-                st.session_state["return_order_selector_table"] = None
-                st.session_state["client_selected_shipping_batch"] = None
-                st.warning("已取消本次整批選取的欲運回訂單。")
-                st.rerun()
+        st.caption("若要取消運回，請直接私訊橘貓協助處理。")
     else:
         st.caption("尚未選取欲運回訂單。")
 
