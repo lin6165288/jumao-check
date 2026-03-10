@@ -49,15 +49,26 @@ def get_current_exchange_rate():
         conn.close()
 
 
-def get_recent_shipping_batches():
+def get_recent_shipping_batches(delivery_method=None):
     conn = get_connection()
     try:
-        df = pd.read_sql("""
+        sql = """
             SELECT batch_text
             FROM shipping_batches
             WHERE is_active = 1
-            ORDER BY sort_order ASC, batch_id DESC
-        """, conn)
+        """
+        params = []
+
+        if delivery_method == "宅配":
+            sql += " AND delivery_type = %s"
+            params.append("home_delivery")
+        elif delivery_method == "賣貨便":
+            sql += " AND delivery_type = %s"
+            params.append("shop_delivery")
+
+        sql += " ORDER BY sort_order ASC, batch_id DESC"
+
+        df = pd.read_sql(sql, conn, params=params)
 
         if df.empty:
             return []
@@ -413,11 +424,19 @@ def page_order_query():
     st.title("📦 查詢訂單")
     st.caption("輸入名稱後查詢訂單，並可選取欲提前言運回的訂單與船班。")
 
-    available_shipping_batches = [
-        "3/12 海快船班｜預計 3/15-3/16 到台",
-        "3/15 空運船班｜預計 3/17-3/18 到台",
-        "3/18 海快船班｜預計 3/21-3/22 到台",
-    ]
+    available_shipping_batches = get_recent_shipping_batches(delivery_method)
+    
+    if not available_shipping_batches:
+        st.warning(f"目前沒有可選擇的{delivery_method}船班。")
+        selected_batch = None
+    else:
+        selected_batch = st.selectbox(
+            "請選擇欲運回的船班",
+            options=available_shipping_batches,
+            index=None,
+            placeholder="請選擇船班",
+            key="client_selected_shipping_batch"
+        )
 
     def round_up_half_kg(weight):
         if weight <= 0:
