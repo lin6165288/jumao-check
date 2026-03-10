@@ -417,7 +417,18 @@ def page_home():
 def page_order_query():
     st.title("📦 查詢訂單")
     st.caption("輸入名稱後查詢訂單，並可選取欲提前運回的訂單與船班。")
-    
+
+    # ===== session state 初始化 =====
+    st.session_state.setdefault("client_query_name", "")
+    st.session_state.setdefault("client_query_show_all", False)
+    st.session_state.setdefault("client_query_submitted", False)
+    st.session_state.setdefault("client_query_df", None)
+    st.session_state.setdefault("return_selector_reset_counter", 0)
+    st.session_state.setdefault("return_request_sent", False)
+    st.session_state.setdefault("show_success_box", False)
+    st.session_state.setdefault("success_box_message", "")
+
+    # ===== 成功提示框（按確定才消失） =====
     if st.session_state.get("show_success_box", False):
         with st.container(border=True):
             st.success(st.session_state.get("success_box_message", "已送出申請！"))
@@ -464,15 +475,7 @@ def page_order_query():
         total_billable = forwarding_billable + other_billable
         return round(shipping_fee), total_billable, forwarding_billable, other_billable
 
-    st.session_state.setdefault("client_query_name", "")
-    st.session_state.setdefault("client_query_show_all", False)
-    st.session_state.setdefault("client_query_submitted", False)
-    st.session_state.setdefault("client_query_df", None)
-    st.session_state.setdefault("return_selector_reset_counter", 0)
-    st.session_state.setdefault("return_request_sent", False)
-    st.session_state.setdefault("show_success_box", False)
-    st.session_state.setdefault("success_box_message", "")
-
+    # ===== 查詢條件 =====
     st.markdown("### 🔍 查詢條件")
     with st.form("order_query_form"):
         customer_name_input = st.text_input(
@@ -616,6 +619,7 @@ def page_order_query():
     st.markdown("### 📋 訂單列表")
     st.dataframe(df_table, use_container_width=True, hide_index=True)
 
+    # 只顯示已到倉且未運回
     selectable_df = df[(df["is_arrived"] == 1) & (df["is_returned"] == 0)].copy()
 
     st.markdown("### 🚢 欲提前運回訂單申請")
@@ -758,15 +762,14 @@ def page_order_query():
                 )
 
                 if ok:
-                  st.session_state["success_popup_message"] = f"已送出運回申請！申請編號：#{request_id}"
-                  st.session_state["show_success_popup"] = True
-                  st.session_state["return_request_sent"] = True
-                  st.rerun()
+                    st.session_state["success_box_message"] = f"已送出運回申請！申請編號：#{request_id}"
+                    st.session_state["show_success_box"] = True
+                    st.session_state["return_request_sent"] = True
+                    st.rerun()
                 else:
                     st.error(f"送出失敗：{err}")
     else:
         st.caption("尚未選取欲運回訂單。")
-
 
 def page_faq():
     st.title("❓ 常見 QA")
