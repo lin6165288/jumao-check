@@ -15,8 +15,8 @@ st.set_page_config(
 # =============================
 # 資料庫連線
 # =============================
-def get_connection():
-    return mysql.connector.connect(
+ddef get_connection():
+    conn = mysql.connector.connect(
         host=st.secrets["mysql"]["host"],
         port=int(st.secrets["mysql"]["port"]),
         user=st.secrets["mysql"]["user"],
@@ -193,12 +193,6 @@ def save_return_request(
 # =============================
 # 假資料（之後可改成資料庫讀取）
 # =============================
-CURRENT_EXCHANGE_RATE = "4.78"
-RECENT_SHIPMENTS = [
-    "3/12 海快船班｜預計 3/15-3/16 到台",
-    "3/15 空運船班｜預計 3/17-3/18 到台",
-    "3/18 海快船班｜預計 3/21-3/22 到台",
-]
 
 # =============================
 # 共用樣式
@@ -422,20 +416,7 @@ def page_home():
 
 def page_order_query():
     st.title("📦 查詢訂單")
-    st.caption("輸入名稱後查詢訂單，並可選取欲提前言運回的訂單與船班。")
-
-    
-    if not available_shipping_batches:
-        st.warning(f"目前沒有可選擇的{delivery_method}船班。")
-        selected_batch = None
-    else:
-        selected_batch = st.selectbox(
-            "請選擇欲運回的船班",
-            options=available_shipping_batches,
-            index=None,
-            placeholder="請選擇船班",
-            key="client_selected_shipping_batch"
-        )
+    st.caption("輸入名稱後查詢訂單，並可選取欲提前運回的訂單與船班。")
 
     def round_up_half_kg(weight):
         if weight <= 0:
@@ -473,7 +454,6 @@ def page_order_query():
         total_billable = forwarding_billable + other_billable
         return round(shipping_fee), total_billable, forwarding_billable, other_billable
 
-    # 初始化 session state，避免元件互動後跳回查詢前
     st.session_state.setdefault("client_query_name", "")
     st.session_state.setdefault("client_query_show_all", False)
     st.session_state.setdefault("client_query_submitted", False)
@@ -493,7 +473,6 @@ def page_order_query():
         )
         submitted = st.form_submit_button("查詢訂單")
 
-    # 只有按下查詢時才重抓資料
     if submitted:
         customer_name_input = customer_name_input.strip()
         st.session_state["client_query_name"] = customer_name_input
@@ -552,7 +531,6 @@ def page_order_query():
                 """
                 df = pd.read_sql(sql, conn, params=[customer_name_input])
 
-            # 型別整理
             for col in ["is_arrived", "is_returned", "is_early_returned", "early_return"]:
                 if col in df.columns:
                     df[col] = df[col].fillna(0).astype(int)
@@ -575,7 +553,6 @@ def page_order_query():
             except:
                 pass
 
-    # 還沒查詢前
     if not st.session_state["client_query_submitted"]:
         st.info("請先輸入登記包裹用名稱，再按下「查詢訂單」。")
         return
@@ -588,10 +565,6 @@ def page_order_query():
 
     st.success(f"查詢成功，共找到 {len(df)} 筆訂單。")
 
-    # 到倉狀態規則：
-    # 1. 若有單號且未到倉 -> 運送中
-    # 2. 若無單號且未到倉 -> 賣家尚未寄出
-    # 3. 若已到倉 -> 已到倉
     def get_arrived_status(row):
         tracking = "" if pd.isna(row["tracking_number"]) else str(row["tracking_number"]).strip()
         if int(row["is_arrived"]) == 1:
@@ -629,7 +602,6 @@ def page_order_query():
     st.markdown("### 📋 訂單列表")
     st.dataframe(df_table, use_container_width=True, hide_index=True)
 
-    # 可被選為欲運回訂單的條件：已到倉且尚未運回
     selectable_df = df[(df["is_arrived"] == 1) & (df["is_returned"] == 0)].copy()
 
     st.markdown("### 🚢 欲提前運回訂單申請")
@@ -639,10 +611,8 @@ def page_order_query():
         return
 
     st.write("只有【已到倉】的包裹可以選取。")
-
     st.markdown("#### 請選取欲提前運回的訂單")
 
-    selectable_df = selectable_df.copy()
     selectable_df["selected"] = False
 
     editable_df = selectable_df[[
@@ -682,108 +652,108 @@ def page_order_query():
 
     selected_df = edited_df[edited_df["選取"] == True].copy()
 
-        if not selected_df.empty:
-            selected_df = selected_df.rename(columns={
-                "訂單編號": "order_id",
-                "下單日期": "order_time",
-                "平台": "platform",
-                "快遞單號": "tracking_number",
-                "金額": "amount_rmb",
-                "商品重量(kg)": "weight_kg",
-            })
+    if not selected_df.empty:
+        selected_df = selected_df.rename(columns={
+            "訂單編號": "order_id",
+            "下單日期": "order_time",
+            "平台": "platform",
+            "快遞單號": "tracking_number",
+            "金額": "amount_rmb",
+            "商品重量(kg)": "weight_kg",
+        })
 
-            total_count = len(selected_df)
-            total_weight = float(selected_df["weight_kg"].sum())
+        total_count = len(selected_df)
+        total_weight = float(selected_df["weight_kg"].sum())
 
-            delivery_method = st.radio(
-                "請選擇台灣端寄送方式",
-                options=["面交/自取", "宅配", "賣貨便"],
-                horizontal=True,
-                key="client_delivery_method"
-            )
+        delivery_method = st.radio(
+            "請選擇台灣端寄送方式",
+            options=["面交/自取", "宅配", "賣貨便"],
+            horizontal=True,
+            key="client_delivery_method"
+        )
 
-            estimated_fee, billable_weight, forwarding_billable, other_billable = calc_estimated_shipping_fee(
-                selected_df,
-                delivery_method
-            )
+        estimated_fee, billable_weight, forwarding_billable, other_billable = calc_estimated_shipping_fee(
+            selected_df,
+            delivery_method
+        )
 
-            st.markdown("#### 📦 欲運回資訊")
-            info1, info2, info3 = st.columns(3)
-            info1.metric("總包裹件數", f"{total_count} 件")
-            info2.metric("總重量", f"{total_weight:.2f} kg")
-            info3.metric("預估運費", f"NT$ {estimated_fee:,.0f}")
+        st.markdown("#### 📦 欲運回資訊")
+        info1, info2, info3 = st.columns(3)
+        info1.metric("總包裹件數", f"{total_count} 件")
+        info2.metric("總重量", f"{total_weight:.2f} kg")
+        info3.metric("預估運費", f"NT$ {estimated_fee:,.0f}")
 
-            detail_parts = []
-            if forwarding_billable > 0:
-                detail_parts.append(f"純集運計費重量 {forwarding_billable:.2f} kg × 90")
-            if other_billable > 0:
-                detail_parts.append(f"代購商品計費重量 {other_billable:.2f} kg × 70")
-            if delivery_method == "宅配":
-                detail_parts.append("宅配 +100")
-            elif delivery_method == "賣貨便":
-                detail_parts.append("賣貨便 +38")
-    
-            if detail_parts:
-                st.caption("＋".join(detail_parts))
+        detail_parts = []
+        if forwarding_billable > 0:
+            detail_parts.append(f"純集運計費重量 {forwarding_billable:.2f} kg × 90")
+        if other_billable > 0:
+            detail_parts.append(f"代購商品計費重量 {other_billable:.2f} kg × 70")
+        if delivery_method == "宅配":
+            detail_parts.append("宅配 +100")
+        elif delivery_method == "賣貨便":
+            detail_parts.append("賣貨便 +38")
 
-            st.caption("純集運：每公斤 90 元，最低 1 公斤起算，並以 0.5 公斤為單位計費；代購商品：每公斤 70 元，以 0.5 公斤為單位計費；宅配加 100 元，賣貨便加 38 元。")
+        if detail_parts:
+            st.caption("＋".join(detail_parts))
 
-            selected_table = selected_df[["order_id", "order_time", "platform", "tracking_number", "weight_kg"]].copy()
-            selected_table = selected_table.rename(columns={
-                "order_id": "訂單編號",
-                "order_time": "下單日期",
-                "platform": "平台",
-                "tracking_number": "快遞單號",
-                "weight_kg": "重量(kg)",
-            })
-            st.dataframe(selected_table, use_container_width=True, hide_index=True)
+        st.caption("純集運：每公斤 90 元，最低 1 公斤起算，並以 0.5 公斤為單位計費；代購商品：每公斤 70 元，以 0.5 公斤為單位計費；宅配加 100 元，賣貨便加 38 元。")
 
-            available_shipping_batches = get_recent_shipping_batches(delivery_method)
+        selected_table = selected_df[["order_id", "order_time", "platform", "tracking_number", "weight_kg"]].copy()
+        selected_table = selected_table.rename(columns={
+            "order_id": "訂單編號",
+            "order_time": "下單日期",
+            "platform": "平台",
+            "tracking_number": "快遞單號",
+            "weight_kg": "重量(kg)",
+        })
+        st.dataframe(selected_table, use_container_width=True, hide_index=True)
 
-            if delivery_method == "面交/自取":
-                st.info("面交/自取不需選擇船班。")
-                selected_batch = "面交/自取"
-            elif not available_shipping_batches:
-                st.warning(f"目前沒有可選擇的{delivery_method}船班。")
-                selected_batch = None
-            else:
-                selected_batch = st.selectbox(
-                    "請選擇欲運回的船班",
-                    options=available_shipping_batches,
-                    index=None,
-                    placeholder="請選擇船班",
-                    key="client_selected_shipping_batch"
-                )
-    
-            if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
-                if not selected_batch:
-                    st.warning("請先選擇欲運回的船班。")
-                else:
-                    ok, request_id, err = save_return_request(
-                        customer_name=st.session_state["client_query_name"],
-                        selected_shipping_batch=selected_batch,
-                        delivery_method=delivery_method,
-                        selected_df=selected_df,
-                        total_count=total_count,
-                        total_weight=total_weight,
-                        estimated_fee=estimated_fee
-                    )
+        available_shipping_batches = get_recent_shipping_batches(delivery_method)
 
-                    if ok:
-                        st.success(f"已送出運回申請！申請編號：#{request_id}")
-                        st.info("若要取消運回，請直接私訊橘貓協助處理。")
-
-                        st.session_state["return_selector_reset_counter"] += 1
-                        if "client_selected_shipping_batch" in st.session_state:
-                            del st.session_state["client_selected_shipping_batch"]
-                        if "client_delivery_method" in st.session_state:
-                            del st.session_state["client_delivery_method"]
-
-                        st.rerun()
-                    else:
-                        st.error(f"送出失敗：{err}")
+        if delivery_method == "面交/自取":
+            st.info("面交/自取不需選擇船班。")
+            selected_batch = "面交/自取"
+        elif not available_shipping_batches:
+            st.warning(f"目前沒有可選擇的{delivery_method}船班。")
+            selected_batch = None
         else:
-            st.caption("尚未選取欲運回訂單。")
+            selected_batch = st.selectbox(
+                "請選擇欲運回的船班",
+                options=available_shipping_batches,
+                index=None,
+                placeholder="請選擇船班",
+                key="client_selected_shipping_batch"
+            )
+
+        if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
+            if not selected_batch:
+                st.warning("請先選擇欲運回的船班。")
+            else:
+                ok, request_id, err = save_return_request(
+                    customer_name=st.session_state["client_query_name"],
+                    selected_shipping_batch=selected_batch,
+                    delivery_method=delivery_method,
+                    selected_df=selected_df,
+                    total_count=total_count,
+                    total_weight=total_weight,
+                    estimated_fee=estimated_fee
+                )
+
+                if ok:
+                    st.success(f"已送出運回申請！申請編號：#{request_id}")
+                    st.info("若要取消運回，請直接私訊橘貓協助處理。")
+
+                    st.session_state["return_selector_reset_counter"] += 1
+                    if "client_selected_shipping_batch" in st.session_state:
+                        del st.session_state["client_selected_shipping_batch"]
+                    if "client_delivery_method" in st.session_state:
+                        del st.session_state["client_delivery_method"]
+
+                    st.rerun()
+                else:
+                    st.error(f"送出失敗：{err}")
+    else:
+        st.caption("尚未選取欲運回訂單。")
 
 
 def page_faq():
