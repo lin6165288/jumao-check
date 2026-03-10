@@ -417,6 +417,10 @@ def page_home():
 def page_order_query():
     st.title("📦 查詢訂單")
     st.caption("輸入名稱後查詢訂單，並可選取欲提前運回的訂單與船班。")
+    
+    if st.session_state.get("flash_info"):
+        st.info(st.session_state["flash_info"])
+        st.session_state["flash_info"] = None
 
     def round_up_half_kg(weight):
         if weight <= 0:
@@ -740,8 +744,8 @@ def page_order_query():
                 )
 
                 if ok:
-                    st.success(f"已送出運回申請！申請編號：#{request_id}")
-                    st.info("若要取消運回，請直接私訊橘貓協助處理。")
+                    st.session_state["flash_toast"] = f"已送出運回申請！"
+                    st.session_state["flash_info"] = "若要取消運回，請直接私訊橘貓協助處理。"
 
                     st.session_state["return_selector_reset_counter"] += 1
                     if "client_selected_shipping_batch" in st.session_state:
