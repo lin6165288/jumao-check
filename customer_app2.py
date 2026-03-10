@@ -206,7 +206,7 @@ def inject_custom_css():
         }
 
         .block-container {
-            padding-top: 2rem;
+            padding-top: 4.5rem;
             padding-bottom: 3rem;
             max-width: 1200px;
         }
@@ -345,6 +345,13 @@ def feature_card(title, desc, button_text, key, target_page):
         st.session_state["page"] = target_page
         st.rerun()
 
+def back_to_home_button():
+    col1, col2 = st.columns([1, 6])
+    with col1:
+        if st.button("← 返回首頁", use_container_width=True):
+            st.session_state["page"] = "home"
+            st.rerun()
+
 
 # =============================
 # 各功能頁面（先放大架構）
@@ -415,6 +422,7 @@ def page_home():
 
 
 def page_order_query():
+    back_to_home_button()
     # ===== session state 初始化（一定要放最前面）=====
     st.session_state.setdefault("client_query_name", "")
     st.session_state.setdefault("client_query_show_all", False)
@@ -765,6 +773,8 @@ def page_order_query():
                 st.caption("尚未選取欲運回訂單。")
 
 def page_faq():
+    back_to_home_button()
+
     st.title("❓ 常見 QA")
     st.info("這裡之後可放 FAQ 分類，例如：下單流程、付款、出貨、運費、售後。")
 
@@ -776,6 +786,8 @@ def page_faq():
 
 
 def page_quote():
+    back_to_home_button()
+
     st.title("🧮 自動報價")
     st.info("這裡之後可放：商品金額輸入、手續費規則、匯率換算、自動計算結果。")
 
@@ -788,6 +800,8 @@ def page_quote():
 
 
 def page_forwarding_register():
+    back_to_home_button()
+
     st.title("📮 集運客戶登記集運包裹")
     st.info("這裡之後可放：客戶填寫單號、貨品名稱、備註、圖片上傳、送出登記。")
 
@@ -802,6 +816,8 @@ def page_forwarding_register():
 
 
 def page_member_center():
+    back_to_home_button()
+
     st.title("👤 會員專區")
     st.info("這裡之後可放：登入、會員資料、優惠券、訂單紀錄、專屬通知。")
 
@@ -820,6 +836,8 @@ def page_member_center():
 
 
 def page_anonymous_feedback():
+    back_to_home_button()
+
     st.title("📝 匿名回饋")
     st.info("這裡之後可放：匿名意見表單、分類、評分、送出後寫入 feedback 資料表。")
 
