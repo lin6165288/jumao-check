@@ -254,13 +254,6 @@ def page_order_query():
     st.title("📦 查詢訂單")
     st.caption("輸入登記包裹用名稱後查詢訂單，並可選取欲運回的訂單與船班。")
 
-    # =============================
-    # 你的 orders 資料表欄位
-    # order_id, order_time, customer_name, platform, tracking_number,
-    # amount_rmb, weight_kg, is_arrived, is_returned,
-    # remarks, service_fee, early_return, is_early_returned
-    # =============================
-
     available_shipping_batches = [
         "3/12 海快船班｜預計 3/15-3/16 到台",
         "3/15 空運船班｜預計 3/17-3/18 到台",
@@ -273,114 +266,158 @@ def page_order_query():
             return 0
         return round(total_weight * 100)
 
+    # 初始化 session state，避免元件互動後跳回查詢前
+    st.session_state.setdefault("client_query_name", "")
+    st.session_state.setdefault("client_query_show_all", False)
+    st.session_state.setdefault("client_query_submitted", False)
+    st.session_state.setdefault("client_query_df", None)
+
     st.markdown("### 🔍 查詢條件")
     with st.form("order_query_form"):
         customer_name_input = st.text_input(
             "登記包裹用名稱（默認 LINE 名稱）",
+            value=st.session_state["client_query_name"],
             placeholder="請輸入登記包裹用名稱"
         )
-        show_all_history = st.checkbox("查看過去所有訂單（包含已運回）", value=False)
+        show_all_history = st.checkbox(
+            "查看過去所有訂單（包含已運回）",
+            value=st.session_state["client_query_show_all"]
+        )
         submitted = st.form_submit_button("查詢訂單")
 
-    if not submitted:
+    # 只有按下查詢時才重抓資料
+    if submitted:
+        customer_name_input = customer_name_input.strip()
+        st.session_state["client_query_name"] = customer_name_input
+        st.session_state["client_query_show_all"] = show_all_history
+        st.session_state["client_query_submitted"] = True
+
+        if not customer_name_input:
+            st.session_state["client_query_df"] = None
+            st.warning("請先輸入登記包裹用名稱。")
+            return
+
+        try:
+            conn = get_connection()
+
+            if show_all_history:
+                sql = """
+                SELECT
+                    order_id,
+                    order_time,
+                    customer_name,
+                    platform,
+                    tracking_number,
+                    amount_rmb,
+                    weight_kg,
+                    is_arrived,
+                    is_returned,
+                    remarks,
+                    service_fee,
+                    early_return,
+                    is_early_returned
+                FROM orders
+                WHERE customer_name = %s
+                ORDER BY order_time DESC, order_id DESC
+                """
+                df = pd.read_sql(sql, conn, params=[customer_name_input])
+            else:
+                sql = """
+                SELECT
+                    order_id,
+                    order_time,
+                    customer_name,
+                    platform,
+                    tracking_number,
+                    amount_rmb,
+                    weight_kg,
+                    is_arrived,
+                    is_returned,
+                    remarks,
+                    service_fee,
+                    early_return,
+                    is_early_returned
+                FROM orders
+                WHERE customer_name = %s
+                  AND is_returned = 0
+                ORDER BY order_time DESC, order_id DESC
+                """
+                df = pd.read_sql(sql, conn, params=[customer_name_input])
+
+            # 型別整理
+            for col in ["is_arrived", "is_returned", "is_early_returned", "early_return"]:
+                if col in df.columns:
+                    df[col] = df[col].fillna(0).astype(int)
+
+            if "weight_kg" in df.columns:
+                df["weight_kg"] = pd.to_numeric(df["weight_kg"], errors="coerce").fillna(0.0)
+
+            if "amount_rmb" in df.columns:
+                df["amount_rmb"] = pd.to_numeric(df["amount_rmb"], errors="coerce").fillna(0.0)
+
+            st.session_state["client_query_df"] = df
+
+        except Exception as e:
+            st.session_state["client_query_df"] = None
+            st.error(f"查詢訂單失敗：{e}")
+            return
+        finally:
+            try:
+                conn.close()
+            except:
+                pass
+
+    # 還沒查詢前
+    if not st.session_state["client_query_submitted"]:
         st.info("請先輸入登記包裹用名稱，再按下「查詢訂單」。")
         return
 
-    customer_name_input = customer_name_input.strip()
-    if not customer_name_input:
-        st.warning("請先輸入登記包裹用名稱。")
-        return
+    df = st.session_state["client_query_df"]
 
-    try:
-        conn = get_connection()
-
-        if show_all_history:
-            sql = """
-            SELECT
-                order_id,
-                order_time,
-                customer_name,
-                platform,
-                tracking_number,
-                amount_rmb,
-                weight_kg,
-                is_arrived,
-                is_returned,
-                remarks,
-                service_fee,
-                early_return,
-                is_early_returned
-            FROM orders
-            WHERE customer_name = %s
-            ORDER BY order_time DESC, order_id DESC
-            """
-            df = pd.read_sql(sql, conn, params=[customer_name_input])
-        else:
-            sql = """
-            SELECT
-                order_id,
-                order_time,
-                customer_name,
-                platform,
-                tracking_number,
-                amount_rmb,
-                weight_kg,
-                is_arrived,
-                is_returned,
-                remarks,
-                service_fee,
-                early_return,
-                is_early_returned
-            FROM orders
-            WHERE customer_name = %s
-              AND is_returned = 0
-            ORDER BY order_time DESC, order_id DESC
-            """
-            df = pd.read_sql(sql, conn, params=[customer_name_input])
-
-    except Exception as e:
-        st.error(f"查詢訂單失敗：{e}")
-        return
-    finally:
-        try:
-            conn.close()
-        except:
-            pass
-
-    if df.empty:
+    if df is None or df.empty:
         st.warning("查無符合的訂單資料。")
         return
 
-    # 型別整理
-    for col in ["is_arrived", "is_returned", "is_early_returned", "early_return"]:
-        if col in df.columns:
-            df[col] = df[col].fillna(0).astype(int)
-
-    if "weight_kg" in df.columns:
-        df["weight_kg"] = pd.to_numeric(df["weight_kg"], errors="coerce").fillna(0.0)
-
     st.success(f"查詢成功，共找到 {len(df)} 筆訂單。")
 
-    st.markdown("### 📋 訂單列表")
-    for _, row in df.iterrows():
-        status_arrived = "✔ 已到倉" if row["is_arrived"] == 1 else "✈️ 運送中"
-        status_returned = "✔ 已運回" if row["is_returned"] == 1 else "✘ 未運回"
-        early_flag = "是" if row.get("is_early_returned", 0) == 1 else "否"
+    # 到倉狀態規則：
+    # 1. 若有單號且未到倉 -> 運送中
+    # 2. 若無單號且未到倉 -> 賣家尚未寄出
+    # 3. 若已到倉 -> 已到倉
+    def get_arrived_status(row):
+        tracking = "" if pd.isna(row["tracking_number"]) else str(row["tracking_number"]).strip()
+        if int(row["is_arrived"]) == 1:
+            return "已到倉"
+        return "運送中" if tracking else "賣家尚未寄出"
 
-        with st.container(border=True):
-            c1, c2 = st.columns([3, 2])
-            with c1:
-                st.write(f"**訂單編號：** {row['order_id']}")
-                st.write(f"**下單日期：** {row['order_time']}")
-                st.write(f"**平台：** {row['platform']}")
-                st.write(f"**快遞單號：** {row['tracking_number']}")
-                st.write(f"**備註：** {row['remarks'] if pd.notna(row['remarks']) and str(row['remarks']).strip() else '—'}")
-            with c2:
-                st.write(f"**金額：** RMB {float(row['amount_rmb']):,.2f}")
-                st.write(f"**重量：** {float(row['weight_kg']):.2f} kg")
-                st.write(f"**到倉狀態：** {status_arrived}")
-                st.write(f"**運回狀態：** {status_returned}")
-                st.write(f"**提前運回標記：** {early_flag}")
+    df_display = df.copy()
+    df_display["到倉狀態"] = df_display.apply(get_arrived_status, axis=1)
+    df_display["運回狀態"] = df_display["is_returned"].apply(lambda x: "已運回" if int(x) == 1 else "未運回")
+
+    if "order_time" in df_display.columns:
+        df_display["order_time"] = df_display["order_time"].astype(str)
+
+    if "tracking_number" in df_display.columns:
+        df_display["tracking_number"] = df_display["tracking_number"].fillna("")
+
+    df_table = df_display[[
+        "order_id",
+        "order_time",
+        "platform",
+        "tracking_number",
+        "amount_rmb",
+        "到倉狀態",
+        "運回狀態",
+    ]].rename(columns={
+        "order_id": "訂單編號",
+        "order_time": "下單日期",
+        "platform": "平台",
+        "tracking_number": "快遞單號",
+        "amount_rmb": "金額",
+    })
+
+    st.markdown("### 📋 訂單列表")
+    st.dataframe(df_table, use_container_width=True, hide_index=True)
 
     # 可被選為欲運回訂單的條件：已到倉且尚未運回
     selectable_df = df[(df["is_arrived"] == 1) & (df["is_returned"] == 0)].copy()
@@ -394,7 +431,7 @@ def page_order_query():
     st.write("只有【已到倉且尚未運回】的包裹可以選取為欲運回訂單。")
 
     selectable_df["display_label"] = selectable_df.apply(
-        lambda r: f"訂單#{r['order_id']}｜{r['platform']}｜{r['tracking_number']}｜{float(r['weight_kg']):.2f} kg",
+        lambda r: f"訂單#{r['order_id']}｜{r['platform']}｜{str(r['tracking_number']) if pd.notna(r['tracking_number']) else ''}｜{float(r['weight_kg']):.2f} kg",
         axis=1
     )
 
@@ -417,17 +454,22 @@ def page_order_query():
         info2.metric("總重量", f"{total_weight:.2f} kg")
         info3.metric("預估國際運費", f"NT$ {estimated_fee:,.0f}")
 
-        st.dataframe(
-            selected_df[["order_id", "platform", "tracking_number", "weight_kg"]],
-            use_container_width=True,
-            hide_index=True
-        )
+        selected_table = selected_df[["order_id", "order_time", "platform", "tracking_number", "weight_kg"]].copy()
+        selected_table = selected_table.rename(columns={
+            "order_id": "訂單編號",
+            "order_time": "下單日期",
+            "platform": "平台",
+            "tracking_number": "快遞單號",
+            "weight_kg": "重量(kg)",
+        })
+        st.dataframe(selected_table, use_container_width=True, hide_index=True)
 
         selected_batch = st.selectbox(
             "請選擇欲運回的船班",
             options=available_shipping_batches,
             index=None,
-            placeholder="請選擇船班"
+            placeholder="請選擇船班",
+            key="client_selected_shipping_batch"
         )
 
         c_confirm, c_cancel = st.columns(2)
@@ -437,13 +479,14 @@ def page_order_query():
                 if not selected_batch:
                     st.warning("請先選擇欲運回的船班。")
                 else:
-                    st.success("已確認欲運回訂單（目前先完成前端查詢與欄位對接）。")
-                    st.info("下一步我可以幫你把這批資料真的寫進後台可出貨名單。")
+                    st.success("已確認欲運回訂單（目前先完成前端查詢流程）。")
 
         with c_cancel:
             if st.button("🗑 取消整批欲運回訂單", use_container_width=True):
+                st.session_state["selected_return_orders_labels"] = []
+                st.session_state["client_selected_shipping_batch"] = None
                 st.warning("已取消本次整批選取的欲運回訂單。")
-                st.caption("依你的需求，取消時需整筆取消，不提供單筆局部取消。")
+                st.rerun()
     else:
         st.caption("尚未選取欲運回訂單。")
 
