@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+import mysql.connector
 from datetime import datetime
 
 # =============================
@@ -9,6 +11,21 @@ st.set_page_config(
     page_icon="🧡",
     layout="wide"
 )
+
+# =============================
+# 資料庫連線
+# =============================
+def get_connection():
+    return mysql.connector.connect(
+        host=st.secrets["mysql"]["host"],
+        port=int(st.secrets["mysql"]["port"]),
+        user=st.secrets["mysql"]["user"],
+        password=st.secrets["mysql"]["password"],
+        database=st.secrets["mysql"]["database"],
+        charset="utf8mb4",
+        connection_timeout=10,
+    )
+
 
 # =============================
 # 假資料（之後可改成資料庫讀取）
@@ -235,9 +252,200 @@ def page_home():
 
 def page_order_query():
     st.title("📦 查詢訂單")
-    st.info("這裡之後可放：訂單查詢表單、查詢結果、訂單進度、物流狀態。")
-    st.text_input("訂單編號 / 客戶姓名 / 手機末三碼（示意）")
-    st.button("查詢")
+    st.caption("輸入登記包裹用名稱後查詢訂單，並可選取欲運回的訂單與船班。")
+
+    # =============================
+    # 你的 orders 資料表欄位
+    # order_id, order_time, customer_name, platform, tracking_number,
+    # amount_rmb, weight_kg, is_arrived, is_returned,
+    # remarks, service_fee, early_return, is_early_returned
+    # =============================
+
+    available_shipping_batches = [
+        "3/12 海快船班｜預計 3/15-3/16 到台",
+        "3/15 空運船班｜預計 3/17-3/18 到台",
+        "3/18 海快船班｜預計 3/21-3/22 到台",
+    ]
+
+    def calc_estimated_shipping_fee(total_weight):
+        # 先放示意公式，之後可改成你的正式國際運費規則
+        if total_weight <= 0:
+            return 0
+        return round(total_weight * 100)
+
+    st.markdown("### 🔍 查詢條件")
+    with st.form("order_query_form"):
+        customer_name_input = st.text_input(
+            "登記包裹用名稱（默認 LINE 名稱）",
+            placeholder="請輸入登記包裹用名稱"
+        )
+        show_all_history = st.checkbox("查看過去所有訂單（包含已運回）", value=False)
+        submitted = st.form_submit_button("查詢訂單")
+
+    if not submitted:
+        st.info("請先輸入登記包裹用名稱，再按下「查詢訂單」。")
+        return
+
+    customer_name_input = customer_name_input.strip()
+    if not customer_name_input:
+        st.warning("請先輸入登記包裹用名稱。")
+        return
+
+    try:
+        conn = get_connection()
+
+        if show_all_history:
+            sql = """
+            SELECT
+                order_id,
+                order_time,
+                customer_name,
+                platform,
+                tracking_number,
+                amount_rmb,
+                weight_kg,
+                is_arrived,
+                is_returned,
+                remarks,
+                service_fee,
+                early_return,
+                is_early_returned
+            FROM orders
+            WHERE customer_name = %s
+            ORDER BY order_time DESC, order_id DESC
+            """
+            df = pd.read_sql(sql, conn, params=[customer_name_input])
+        else:
+            sql = """
+            SELECT
+                order_id,
+                order_time,
+                customer_name,
+                platform,
+                tracking_number,
+                amount_rmb,
+                weight_kg,
+                is_arrived,
+                is_returned,
+                remarks,
+                service_fee,
+                early_return,
+                is_early_returned
+            FROM orders
+            WHERE customer_name = %s
+              AND is_returned = 0
+            ORDER BY order_time DESC, order_id DESC
+            """
+            df = pd.read_sql(sql, conn, params=[customer_name_input])
+
+    except Exception as e:
+        st.error(f"查詢訂單失敗：{e}")
+        return
+    finally:
+        try:
+            conn.close()
+        except:
+            pass
+
+    if df.empty:
+        st.warning("查無符合的訂單資料。")
+        return
+
+    # 型別整理
+    for col in ["is_arrived", "is_returned", "is_early_returned", "early_return"]:
+        if col in df.columns:
+            df[col] = df[col].fillna(0).astype(int)
+
+    if "weight_kg" in df.columns:
+        df["weight_kg"] = pd.to_numeric(df["weight_kg"], errors="coerce").fillna(0.0)
+
+    st.success(f"查詢成功，共找到 {len(df)} 筆訂單。")
+
+    st.markdown("### 📋 訂單列表")
+    for _, row in df.iterrows():
+        status_arrived = "✔ 已到倉" if row["is_arrived"] == 1 else "✈️ 運送中"
+        status_returned = "✔ 已運回" if row["is_returned"] == 1 else "✘ 未運回"
+        early_flag = "是" if row.get("is_early_returned", 0) == 1 else "否"
+
+        with st.container(border=True):
+            c1, c2 = st.columns([3, 2])
+            with c1:
+                st.write(f"**訂單編號：** {row['order_id']}")
+                st.write(f"**下單日期：** {row['order_time']}")
+                st.write(f"**平台：** {row['platform']}")
+                st.write(f"**快遞單號：** {row['tracking_number']}")
+                st.write(f"**備註：** {row['remarks'] if pd.notna(row['remarks']) and str(row['remarks']).strip() else '—'}")
+            with c2:
+                st.write(f"**金額：** RMB {float(row['amount_rmb']):,.2f}")
+                st.write(f"**重量：** {float(row['weight_kg']):.2f} kg")
+                st.write(f"**到倉狀態：** {status_arrived}")
+                st.write(f"**運回狀態：** {status_returned}")
+                st.write(f"**提前運回標記：** {early_flag}")
+
+    # 可被選為欲運回訂單的條件：已到倉且尚未運回
+    selectable_df = df[(df["is_arrived"] == 1) & (df["is_returned"] == 0)].copy()
+
+    st.markdown("### 🚢 欲運回訂單設定")
+
+    if selectable_df.empty:
+        st.info("目前沒有可選取運回的訂單（需為已到倉且尚未運回）。")
+        return
+
+    st.write("只有【已到倉且尚未運回】的包裹可以選取為欲運回訂單。")
+
+    selectable_df["display_label"] = selectable_df.apply(
+        lambda r: f"訂單#{r['order_id']}｜{r['platform']}｜{r['tracking_number']}｜{float(r['weight_kg']):.2f} kg",
+        axis=1
+    )
+
+    selected_labels = st.multiselect(
+        "請選取欲運回的訂單",
+        options=selectable_df["display_label"].tolist(),
+        key="selected_return_orders_labels"
+    )
+
+    if selected_labels:
+        selected_df = selectable_df[selectable_df["display_label"].isin(selected_labels)].copy()
+
+        total_count = len(selected_df)
+        total_weight = selected_df["weight_kg"].sum()
+        estimated_fee = calc_estimated_shipping_fee(total_weight)
+
+        st.markdown("#### 📦 欲運回資訊")
+        info1, info2, info3 = st.columns(3)
+        info1.metric("總包裹件數", f"{total_count} 件")
+        info2.metric("總重量", f"{total_weight:.2f} kg")
+        info3.metric("預估國際運費", f"NT$ {estimated_fee:,.0f}")
+
+        st.dataframe(
+            selected_df[["order_id", "platform", "tracking_number", "weight_kg"]],
+            use_container_width=True,
+            hide_index=True
+        )
+
+        selected_batch = st.selectbox(
+            "請選擇欲運回的船班",
+            options=available_shipping_batches,
+            index=None,
+            placeholder="請選擇船班"
+        )
+
+        c_confirm, c_cancel = st.columns(2)
+
+        with c_confirm:
+            if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
+                if not selected_batch:
+                    st.warning("請先選擇欲運回的船班。")
+                else:
+                    st.success("已確認欲運回訂單（目前先完成前端查詢與欄位對接）。")
+                    st.info("下一步我可以幫你把這批資料真的寫進後台可出貨名單。")
+
+        with c_cancel:
+            if st.button("🗑 取消整批欲運回訂單", use_container_width=True):
+                st.warning("已取消本次整批選取的欲運回訂單。")
+                st.caption("依你的需求，取消時需整筆取消，不提供單筆局部取消。")
+    else:
+        st.caption("尚未選取欲運回訂單。")
 
 
 def page_faq():
