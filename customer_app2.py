@@ -406,6 +406,7 @@ def page_order_query():
         "platform",
         "tracking_number",
         "amount_rmb",
+        "weight_kg",
         "到倉狀態",
         "運回狀態",
     ]].rename(columns={
@@ -414,6 +415,7 @@ def page_order_query():
         "platform": "平台",
         "tracking_number": "快遞單號",
         "amount_rmb": "金額",
+        "weight_kg": "商品重量(kg)",
     })
 
     st.markdown("### 📋 訂單列表")
@@ -430,19 +432,55 @@ def page_order_query():
 
     st.write("只有【已到倉且尚未運回】的包裹可以選取為欲運回訂單。")
 
-    selectable_df["display_label"] = selectable_df.apply(
-        lambda r: f"訂單#{r['order_id']}｜{r['platform']}｜{str(r['tracking_number']) if pd.notna(r['tracking_number']) else ''}｜{float(r['weight_kg']):.2f} kg",
-        axis=1
+    st.markdown("#### 請選取欲運回的訂單")
+
+    selectable_df = selectable_df.copy()
+    selectable_df["selected"] = False
+
+    editable_df = selectable_df[[
+        "selected",
+        "order_id",
+        "order_time",
+        "platform",
+        "tracking_number",
+        "amount_rmb",
+        "weight_kg",
+    ]].rename(columns={
+        "selected": "選取",
+        "order_id": "訂單編號",
+        "order_time": "下單日期",
+        "platform": "平台",
+        "tracking_number": "快遞單號",
+        "amount_rmb": "金額",
+        "weight_kg": "商品重量(kg)",
+    })
+
+    edited_df = st.data_editor(
+        editable_df,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["訂單編號", "下單日期", "平台", "快遞單號", "金額", "商品重量(kg)"],
+        column_config={
+            "選取": st.column_config.CheckboxColumn(
+                "選取",
+                help="勾選要運回的訂單",
+                default=False,
+            )
+        },
+        key="return_order_selector_table"
     )
 
-    selected_labels = st.multiselect(
-        "請選取欲運回的訂單",
-        options=selectable_df["display_label"].tolist(),
-        key="selected_return_orders_labels"
-    )
+    selected_df = edited_df[edited_df["選取"] == True].copy()
 
-    if selected_labels:
-        selected_df = selectable_df[selectable_df["display_label"].isin(selected_labels)].copy()
+    if not selected_df.empty:
+        selected_df = selected_df.rename(columns={
+            "訂單編號": "order_id",
+            "下單日期": "order_time",
+            "平台": "platform",
+            "快遞單號": "tracking_number",
+            "金額": "amount_rmb",
+            "商品重量(kg)": "weight_kg",
+        })
 
         total_count = len(selected_df)
         total_weight = selected_df["weight_kg"].sum()
@@ -483,7 +521,7 @@ def page_order_query():
 
         with c_cancel:
             if st.button("🗑 取消整批欲運回訂單", use_container_width=True):
-                st.session_state["selected_return_orders_labels"] = []
+                st.session_state["return_order_selector_table"] = None
                 st.session_state["client_selected_shipping_batch"] = None
                 st.warning("已取消本次整批選取的欲運回訂單。")
                 st.rerun()
