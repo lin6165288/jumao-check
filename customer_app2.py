@@ -528,11 +528,10 @@ def page_order_query():
         estimated_fee, billable_weight, forwarding_billable, other_billable = calc_estimated_shipping_fee(selected_df, delivery_method)
 
         st.markdown("#### 📦 欲運回資訊")
-        info1, info2, info3, info4 = st.columns(4)
+        info1, info2, info3 = st.columns(3)
         info1.metric("總包裹件數", f"{total_count} 件")
         info2.metric("總重量", f"{total_weight:.2f} kg")
-        info3.metric("計費重量", f"{billable_weight:.2f} kg")
-        info4.metric("預估國際運費", f"NT$ {estimated_fee:,.0f}")
+        info3.metric("預估運費", f"NT$ {estimated_fee:,.0f}")
 
         detail_parts = []
         if forwarding_billable > 0:
