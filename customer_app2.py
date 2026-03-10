@@ -425,13 +425,13 @@ def page_order_query():
     # 可被選為欲運回訂單的條件：已到倉且尚未運回
     selectable_df = df[(df["is_arrived"] == 1) & (df["is_returned"] == 0)].copy()
 
-    st.markdown("### 🚢 欲提前運回訂單申請區")
+    st.markdown("### 🚢 欲提前運回訂單申請")
 
     if selectable_df.empty:
         st.info("目前沒有可選取運回的訂單。")
         return
 
-    st.write("只有【已到倉】的包裹可以選取為欲提前運回訂單。")
+    st.write("只有【已到倉】的包裹可以選取。")
 
     st.markdown("#### 請選取欲提前運回的訂單")
 
