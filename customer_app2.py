@@ -30,6 +30,42 @@ def get_connection():
     cur.close()
     return conn
 
+def get_current_exchange_rate():
+    conn = get_connection()
+    try:
+        df = pd.read_sql("""
+            SELECT setting_value
+            FROM site_settings
+            WHERE setting_key = 'current_exchange_rate'
+            LIMIT 1
+        """, conn)
+
+        if df.empty:
+            return "4.78"
+        return str(df.iloc[0]["setting_value"])
+    except:
+        return "4.78"
+    finally:
+        conn.close()
+
+
+def get_recent_shipping_batches():
+    conn = get_connection()
+    try:
+        df = pd.read_sql("""
+            SELECT batch_text
+            FROM shipping_batches
+            WHERE is_active = 1
+            ORDER BY sort_order ASC, batch_id DESC
+        """, conn)
+
+        if df.empty:
+            return []
+        return df["batch_text"].tolist()
+    except:
+        return []
+    finally:
+        conn.close()
 
 def ensure_return_request_tables(conn):
     ddl1 = """
@@ -249,6 +285,9 @@ def show_header():
 
 
 def announcement_section():
+    current_exchange_rate = get_current_exchange_rate()
+    recent_shipments = get_recent_shipping_batches()
+
     st.markdown('<div class="section-title">📢 最新公告</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
@@ -259,16 +298,20 @@ def announcement_section():
             <div class="announce-card">
                 <div class="card-title">💱 當前匯率</div>
                 <div style="font-size: 2rem; font-weight: 800; color:#d2691e; margin: 10px 0;">
-                    {CURRENT_EXCHANGE_RATE}
+                    {current_exchange_rate}
                 </div>
-                <div class="small-note">※ 此處先為展示用，之後可改成由後台維護或從資料庫自動讀取。</div>
+                <div class="small-note">※ 此匯率由後台更新。</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     with col2:
-        shipment_html = "".join([f"<li style='margin-bottom:8px;'>{item}</li>" for item in RECENT_SHIPMENTS])
+        if recent_shipments:
+            shipment_html = "".join([f"<li style='margin-bottom:8px;'>{item}</li>" for item in recent_shipments])
+        else:
+            shipment_html = "<li>目前尚無船班公告</li>"
+
         st.markdown(
             f"""
             <div class="announce-card">
@@ -276,7 +319,7 @@ def announcement_section():
                 <ul style="padding-left: 20px; margin-top: 14px; color:#5f5f5f; line-height: 1.8;">
                     {shipment_html}
                 </ul>
-                <div class="small-note">※ 之後可改成由後台直接新增／修改船班資訊。</div>
+                <div class="small-note">※ 此資訊由後台更新。</div>
             </div>
             """,
             unsafe_allow_html=True,
