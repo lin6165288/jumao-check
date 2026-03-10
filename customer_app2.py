@@ -27,6 +27,118 @@ def get_connection():
     )
 
 
+def ensure_return_request_tables(conn):
+    ddl1 = """
+    CREATE TABLE IF NOT EXISTS customer_return_requests (
+      request_id INT AUTO_INCREMENT PRIMARY KEY,
+      customer_name VARCHAR(255) NOT NULL,
+      selected_shipping_batch VARCHAR(255) NOT NULL,
+      delivery_method VARCHAR(50) NOT NULL DEFAULT '面交/自取',
+      total_count INT NOT NULL DEFAULT 0,
+      total_weight DECIMAL(10,3) NOT NULL DEFAULT 0,
+      estimated_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
+      status ENUM('pending','processed','cancelled') NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+
+    ddl2 = """
+    CREATE TABLE IF NOT EXISTS customer_return_request_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      request_id INT NOT NULL,
+      order_id INT NOT NULL,
+      tracking_number VARCHAR(255) NULL,
+      platform VARCHAR(50) NULL,
+      weight_kg DECIMAL(10,3) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_request_order (request_id, order_id),
+      CONSTRAINT fk_return_req_items_request
+        FOREIGN KEY (request_id) REFERENCES customer_return_requests(request_id)
+        ON DELETE CASCADE
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(ddl1)
+        cur.execute(ddl2)
+    conn.commit()
+
+
+def save_return_request(
+    customer_name,
+    selected_shipping_batch,
+    delivery_method,
+    selected_df,
+    total_count,
+    total_weight,
+    estimated_fee
+):
+    conn = get_connection()
+    try:
+        ensure_return_request_tables(conn)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO customer_return_requests
+                (
+                    customer_name,
+                    selected_shipping_batch,
+                    delivery_method,
+                    total_count,
+                    total_weight,
+                    estimated_fee,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, 'pending')
+                """,
+                (
+                    customer_name,
+                    selected_shipping_batch,
+                    delivery_method,
+                    int(total_count),
+                    float(total_weight),
+                    float(estimated_fee),
+                )
+            )
+            request_id = cur.lastrowid
+
+            item_sql = """
+            INSERT INTO customer_return_request_items
+            (
+                request_id,
+                order_id,
+                tracking_number,
+                platform,
+                weight_kg
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            """
+
+            for _, row in selected_df.iterrows():
+                cur.execute(
+                    item_sql,
+                    (
+                        int(request_id),
+                        int(row["order_id"]),
+                        str(row["tracking_number"]) if pd.notna(row["tracking_number"]) else "",
+                        str(row["platform"]) if pd.notna(row["platform"]) else "",
+                        float(row["weight_kg"]) if pd.notna(row["weight_kg"]) else 0.0,
+                    )
+                )
+
+        conn.commit()
+        return True, request_id, None
+
+    except Exception as e:
+        conn.rollback()
+        return False, None, str(e)
+
+    finally:
+        conn.close()
+        
+
 # =============================
 # 假資料（之後可改成資料庫讀取）
 # =============================
@@ -564,11 +676,34 @@ def page_order_query():
             key="client_selected_shipping_batch"
         )
 
-        if st.button("✅ 確認送出申請", use_container_width=True):
+        if st.button("✅ 確認這批欲運回訂單", use_container_width=True):
             if not selected_batch:
                 st.warning("請先選擇欲運回的船班。")
             else:
-                st.success("已完成申請提前運回（目前先完成前端查詢流程）。")
+                ok, request_id, err = save_return_request(
+                    customer_name=st.session_state["client_query_name"],
+                    selected_shipping_batch=selected_batch,
+                    delivery_method=delivery_method,
+                    selected_df=selected_df,
+                    total_count=total_count,
+                    total_weight=total_weight,
+                    estimated_fee=estimated_fee
+                )
+
+                if ok:
+                    st.success(f"已送出運回申請！申請編號：#{request_id}")
+                    st.info("若要取消運回，請直接私訊橘貓協助處理。")
+
+                    # 送出後清空前台勾選/船班，避免重複送出
+                    st.session_state["return_selector_reset_counter"] += 1
+                    if "client_selected_shipping_batch" in st.session_state:
+                        del st.session_state["client_selected_shipping_batch"]
+                    if "client_delivery_method" in st.session_state:
+                        del st.session_state["client_delivery_method"]
+
+                    st.rerun()
+                else:
+                    st.error(f"送出失敗：{err}")
 
         st.caption("若要取消運回，請直接私訊橘貓協助處理。")
     else:
