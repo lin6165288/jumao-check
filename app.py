@@ -368,6 +368,10 @@ conn = mysql.connector.connect(
     connection_timeout=10,
 )
 
+cursor = conn.cursor()
+cursor.execute("SET time_zone = '+08:00'")
+cursor.close()
+
 st.success("✅ DB connected")
 ensure_return_request_tables(conn)
     
@@ -1677,6 +1681,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
