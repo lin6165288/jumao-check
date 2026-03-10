@@ -415,16 +415,18 @@ def page_home():
 
 
 def page_order_query():
-    st.title("📦 查詢訂單")
-    st.caption("輸入名稱後查詢訂單，並可選取欲提前運回的訂單與船班。")
-
-    # ===== session state 初始化 =====
-
+    # ===== session state 初始化（一定要放最前面）=====
+    st.session_state.setdefault("client_query_name", "")
+    st.session_state.setdefault("client_query_show_all", False)
+    st.session_state.setdefault("client_query_submitted", False)
+    st.session_state.setdefault("client_query_df", None)
+    st.session_state.setdefault("return_selector_reset_counter", 0)
     st.session_state.setdefault("return_request_sent", False)
     st.session_state.setdefault("show_success_box", False)
     st.session_state.setdefault("success_box_message", "")
 
-
+    st.title("📦 查詢訂單")
+    st.caption("輸入名稱後查詢訂單，並可選取欲提前運回的訂單與船班。")
 
     def round_up_half_kg(weight):
         if weight <= 0:
@@ -462,17 +464,16 @@ def page_order_query():
         total_billable = forwarding_billable + other_billable
         return round(shipping_fee), total_billable, forwarding_billable, other_billable
 
-    # ===== 查詢條件 =====
     st.markdown("### 🔍 查詢條件")
     with st.form("order_query_form"):
         customer_name_input = st.text_input(
             "登記包裹用名稱（默認 LINE 名稱）",
-            value=st.session_state["client_query_name"],
+            value=st.session_state.get("client_query_name", ""),
             placeholder="請輸入名稱"
         )
         show_all_history = st.checkbox(
             "查看過去所有訂單",
-            value=st.session_state["client_query_show_all"]
+            value=st.session_state.get("client_query_show_all", False)
         )
         submitted = st.form_submit_button("查詢訂單")
 
@@ -606,7 +607,6 @@ def page_order_query():
     st.markdown("### 📋 訂單列表")
     st.dataframe(df_table, use_container_width=True, hide_index=True)
 
-    # 只顯示已到倉且未運回
     selectable_df = df[(df["is_arrived"] == 1) & (df["is_returned"] == 0)].copy()
 
     st.markdown("### 🚢 欲提前運回訂單申請")
@@ -730,7 +730,6 @@ def page_order_query():
                 key="client_selected_shipping_batch"
             )
 
-        # 預留成功提示框位置
         success_box_placeholder = st.empty()
 
         if st.button(
@@ -767,7 +766,6 @@ def page_order_query():
                     st.session_state["show_success_box"] = False
                     st.session_state["success_box_message"] = ""
                     st.rerun()
-            
     else:
         st.caption("尚未選取欲運回訂單。")
 
