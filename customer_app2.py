@@ -260,11 +260,41 @@ def page_order_query():
         "3/18 海快船班｜預計 3/21-3/22 到台",
     ]
 
-    def calc_estimated_shipping_fee(total_weight):
-        # 先放示意公式，之後可改成你的正式國際運費規則
-        if total_weight <= 0:
-            return 0
-        return round(total_weight * 100)
+    def round_up_half_kg(weight):
+        if weight <= 0:
+            return 0.0
+        return ((weight * 2 + 0.999999) // 1) / 2
+
+    def calc_estimated_shipping_fee(selected_df, delivery_method):
+        if selected_df.empty:
+            return 0, 0.0, 0.0, 0.0
+
+        df_calc = selected_df.copy()
+        df_calc["platform"] = df_calc["platform"].astype(str).str.strip()
+        df_calc["weight_kg"] = pd.to_numeric(df_calc["weight_kg"], errors="coerce").fillna(0.0)
+
+        forwarding_weight = float(df_calc[df_calc["platform"] == "集運"]["weight_kg"].sum())
+        other_weight = float(df_calc[df_calc["platform"] != "集運"]["weight_kg"].sum())
+
+        forwarding_billable = 0.0
+        other_billable = 0.0
+        shipping_fee = 0.0
+
+        if forwarding_weight > 0:
+            forwarding_billable = max(1.0, round_up_half_kg(forwarding_weight))
+            shipping_fee += forwarding_billable * 90
+
+        if other_weight > 0:
+            other_billable = round_up_half_kg(other_weight)
+            shipping_fee += other_billable * 70
+
+        if delivery_method == "宅配":
+            shipping_fee += 100
+        elif delivery_method == "賣貨便":
+            shipping_fee += 38
+
+        total_billable = forwarding_billable + other_billable
+        return round(shipping_fee), total_billable, forwarding_billable, other_billable
 
     # 初始化 session state，避免元件互動後跳回查詢前
     st.session_state.setdefault("client_query_name", "")
@@ -486,14 +516,36 @@ def page_order_query():
         })
 
         total_count = len(selected_df)
-        total_weight = selected_df["weight_kg"].sum()
-        estimated_fee = calc_estimated_shipping_fee(total_weight)
+        total_weight = float(selected_df["weight_kg"].sum())
+
+        delivery_method = st.radio(
+            "請選擇台灣端寄送方式",
+            options=["面交/自取", "宅配", "賣貨便"],
+            horizontal=True,
+            key="client_delivery_method"
+        )
+
+        estimated_fee, billable_weight, forwarding_billable, other_billable = calc_estimated_shipping_fee(selected_df, delivery_method)
 
         st.markdown("#### 📦 欲運回資訊")
-        info1, info2, info3 = st.columns(3)
+        info1, info2, info3, info4 = st.columns(4)
         info1.metric("總包裹件數", f"{total_count} 件")
         info2.metric("總重量", f"{total_weight:.2f} kg")
-        info3.metric("預估國際運費", f"NT$ {estimated_fee:,.0f}")
+        info3.metric("計費重量", f"{billable_weight:.2f} kg")
+        info4.metric("預估國際運費", f"NT$ {estimated_fee:,.0f}")
+
+        detail_parts = []
+        if forwarding_billable > 0:
+            detail_parts.append(f"集運計費重量 {forwarding_billable:.2f} kg × 90")
+        if other_billable > 0:
+            detail_parts.append(f"非集運計費重量 {other_billable:.2f} kg × 70")
+        if delivery_method == "宅配":
+            detail_parts.append("宅配 +100")
+        elif delivery_method == "賣貨便":
+            detail_parts.append("賣貨便 +38")
+
+        st.caption("＋".join(detail_parts))
+        st.caption("集運平台：每公斤 90 元，最低 1 公斤起算，並以 0.5 公斤為單位計費；其他平台：每公斤 70 元，以 0.5 公斤為單位計費；宅配加 100 元，賣貨便加 38 元。")
 
         selected_table = selected_df[["order_id", "order_time", "platform", "tracking_number", "weight_kg"]].copy()
         selected_table = selected_table.rename(columns={
