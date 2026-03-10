@@ -535,16 +535,16 @@ def page_order_query():
 
         detail_parts = []
         if forwarding_billable > 0:
-            detail_parts.append(f"集運計費重量 {forwarding_billable:.2f} kg × 90")
+            detail_parts.append(f"純集運計費重量 {forwarding_billable:.2f} kg × 90")
         if other_billable > 0:
-            detail_parts.append(f"非集運計費重量 {other_billable:.2f} kg × 70")
+            detail_parts.append(f"代購商品計費重量 {other_billable:.2f} kg × 70")
         if delivery_method == "宅配":
             detail_parts.append("宅配 +100")
         elif delivery_method == "賣貨便":
             detail_parts.append("賣貨便 +38")
 
         st.caption("＋".join(detail_parts))
-        st.caption("集運平台：每公斤 90 元，最低 1 公斤起算，並以 0.5 公斤為單位計費；其他平台：每公斤 70 元，以 0.5 公斤為單位計費；宅配加 100 元，賣貨便加 38 元。")
+        st.caption("純集運：每公斤 90 元，最低 1 公斤起算，並以 0.5 公斤為單位計費；代購商品：每公斤 70 元，以 0.5 公斤為單位計費；宅配加 100 元，賣貨便加 38 元。")
 
         selected_table = selected_df[["order_id", "order_time", "platform", "tracking_number", "weight_kg"]].copy()
         selected_table = selected_table.rename(columns={
