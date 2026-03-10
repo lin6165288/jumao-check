@@ -195,6 +195,7 @@ def load_pending_return_requests(conn):
         r.estimated_fee,
         r.status,
         r.created_at,
+        DATE_ADD(r.created_at, INTERVAL 8 HOUR) AS created_at,
         GROUP_CONCAT(i.order_id ORDER BY i.order_id SEPARATOR ', ') AS order_ids,
         GROUP_CONCAT(COALESCE(i.tracking_number, '') ORDER BY i.order_id SEPARATOR ', ') AS tracking_numbers
     FROM customer_return_requests r
@@ -1677,6 +1678,7 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
+
 
 
 
