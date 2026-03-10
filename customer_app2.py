@@ -419,11 +419,7 @@ def page_order_query():
     st.caption("輸入名稱後查詢訂單，並可選取欲提前運回的訂單與船班。")
 
     # ===== session state 初始化 =====
-    st.session_state.setdefault("client_query_name", "")
-    st.session_state.setdefault("client_query_show_all", False)
-    st.session_state.setdefault("client_query_submitted", False)
-    st.session_state.setdefault("client_query_df", None)
-    st.session_state.setdefault("return_selector_reset_counter", 0)
+
     st.session_state.setdefault("return_request_sent", False)
     st.session_state.setdefault("show_success_box", False)
     st.session_state.setdefault("success_box_message", "")
