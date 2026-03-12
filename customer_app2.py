@@ -974,15 +974,91 @@ def page_faq():
 def page_quote():
     back_to_home_button()
 
-    st.title("🧮 自動報價")
-    st.info("這裡之後可放：商品金額輸入、手續費規則、匯率換算、自動計算結果。")
+    st.title("🧮 費用試算")
+    st.caption("可先估算商品費用、國際運費與台灣運費，實際金額仍以橘貓最終通知為準。")
 
-    amount = st.number_input("商品金額（人民幣）", min_value=0.0, step=1.0)
-    rate = st.number_input("匯率（示意）", min_value=0.0, value=4.78, step=0.01)
+    def round_up_half_kg(weight):
+        if weight <= 0:
+            return 0.0
+        return ((weight * 2 + 0.999999) // 1) / 2
 
-    if st.button("試算"):
-        estimate = amount * rate
-        st.success(f"示意報價：NT$ {estimate:,.0f}")
+    def calc_service_fee(rmb):
+        rmb = float(rmb)
+
+        if rmb <= 499:
+            return 30
+        elif rmb <= 999:
+            return 50
+        else:
+            extra_blocks = int((rmb - 1000) // 500)
+            return 100 + (extra_blocks * 50)
+
+    def apply_vip_discount(service_fee, vip_level):
+        discount_map = {
+            "一般會員": 1.00,
+            "VIP1": 0.90,
+            "VIP2": 0.85,
+            "VIP3": 0.80,
+        }
+        discounted_fee = service_fee * discount_map.get(vip_level, 1.00)
+        return round(discounted_fee)
+
+    current_rate = get_current_exchange_rate()
+    try:
+        current_rate = float(current_rate)
+    except:
+        current_rate = 4.78
+
+    st.markdown("### ① 商品費用")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        amount_rmb = st.number_input("商品金額（人民幣）", min_value=0.0, step=1.0)
+    with col2:
+        vip_level = st.selectbox("會員等級", ["一般會員", "VIP1", "VIP2", "VIP3"])
+
+    st.markdown("### ② 國際運費")
+
+    col3, col4 = st.columns(2)
+    with col3:
+        weight_kg = st.number_input("商品重量（公斤）", min_value=0.0, step=0.1)
+    with col4:
+        delivery_method = st.selectbox("台灣運送方式", ["宅配", "賣貨便"])
+
+    if st.button("開始試算", use_container_width=True):
+        # 商品費用
+        base_service_fee = calc_service_fee(amount_rmb)
+        service_fee = apply_vip_discount(base_service_fee, vip_level)
+        product_fee = round(amount_rmb * current_rate + service_fee)
+
+        # 國際運費
+        billable_weight = round_up_half_kg(weight_kg)
+        international_fee = round(billable_weight * 70)  # 0.5kg 35元 = 1kg 70元
+
+        # 台灣運費
+        taiwan_fee = 100 if delivery_method == "宅配" else 38
+
+        total_fee = product_fee + international_fee + taiwan_fee
+
+        st.markdown("### 📋 試算結果")
+
+        r1, r2, r3, r4 = st.columns(4)
+        r1.metric("商品費用", f"NT$ {product_fee:,.0f}")
+        r2.metric("國際運費", f"NT$ {international_fee:,.0f}")
+        r3.metric("台灣運費", f"NT$ {taiwan_fee:,.0f}")
+        r4.metric("預估總費用", f"NT$ {total_fee:,.0f}")
+
+        st.markdown("### 明細說明")
+        st.write(f"目前匯率：{current_rate}")
+        st.write(f"商品金額：{amount_rmb:.0f} 人民幣")
+        st.write(f"原始代購手續費：NT$ {base_service_fee}")
+        st.write(f"{vip_level} 折扣後手續費：NT$ {service_fee}")
+        st.write(f"商品費用 = {amount_rmb:.0f} × {current_rate} + {service_fee} = NT$ {product_fee:,.0f}")
+        st.write(f"國際運費計費重量：{billable_weight:.1f} kg")
+        st.write(f"國際運費：NT$ {international_fee:,.0f}")
+        st.write(f"台灣運費（{delivery_method}）：NT$ {taiwan_fee:,.0f}")
+
+        st.info("此為試算金額，實際費用仍可能依商品狀況、重量、物流安排而調整。")
 
 
 def page_forwarding_register():
