@@ -566,9 +566,7 @@ def page_order_query():
             except:
                 pass
 
-    if not st.session_state["client_query_submitted"]:
-        st.info("請先輸入登記包裹用名稱，再按下「查詢訂單」。")
-        return
+
 
     df = st.session_state["client_query_df"]
 
