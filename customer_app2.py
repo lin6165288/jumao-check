@@ -386,7 +386,7 @@ def page_home():
 
     with row1_col3:
         feature_card(
-            "3. 自動報價",
+            "3. 費用試算",
             "可自行輸入商品金額，快速估算代購價格。",
             "使用自動報價",
             "go_quote",
