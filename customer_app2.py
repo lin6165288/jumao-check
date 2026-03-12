@@ -570,9 +570,6 @@ def page_order_query():
 
     df = st.session_state["client_query_df"]
 
-    if df is None or df.empty:
-        st.warning("查無符合的訂單資料。")
-        return
 
     st.success(f"查詢成功，共找到 {len(df)} 筆訂單。")
 
