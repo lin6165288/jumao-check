@@ -475,11 +475,14 @@ elif menu == "🧾 新增訂單":
         st.toast(st.session_state["flash_toast"])
         st.session_state["flash_toast"] = None
 
+    st.session_state.setdefault("add_platform", "集運")
+    default_fee = 0.0 if st.session_state["add_platform"] == "集運" else 30.0
+
     # ✅ 第一次進來時，初始化表單欄位
     defaults = {
         "add_tracking_number": "",
         "add_amount_rmb": 0.0,
-        "add_service_fee": 0.0 if st.session_state.get("add_platform", "集運") == "集運" else 30.0,
+        "add_service_fee": default_fee,
         "add_weight_kg": 0.0,
         "add_is_arrived": False,
         "add_is_returned": False,
@@ -489,7 +492,6 @@ elif menu == "🧾 新增訂單":
         st.session_state.setdefault(k, v)
 
     st.session_state.setdefault("add_order_time", datetime.today().date())
-    st.session_state.setdefault("add_platform", "集運")
 
     # ✅ 若上一輪要求清空姓名
     if st.session_state.get("clear_add_name"):
@@ -565,15 +567,13 @@ elif menu == "🧾 新增訂單":
         key="add_platform"
     )
 
-    # ✅ 平台切換時，自動調整手續費預設值
+    # ✅ 平台切換時，自動調整手續費
     if platform != old_platform:
         if platform == "集運":
             st.session_state["add_service_fee"] = 0.0
-            st.rerun()
         else:
-            if float(st.session_state.get("add_service_fee", 0.0)) == 0.0:
-                st.session_state["add_service_fee"] = 30.0
-            st.rerun()
+            st.session_state["add_service_fee"] = 30.0
+        st.rerun()
 
     tracking_number = st.text_input("包裹單號", key="add_tracking_number")
     amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
@@ -622,7 +622,6 @@ elif menu == "🧾 新增訂單":
 
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
-
 
 # 3. 編輯訂單
 elif menu == "✏️ 編輯訂單":
