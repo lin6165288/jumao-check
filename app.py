@@ -49,6 +49,25 @@ def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last
     conn.commit()
 
 
+def ensure_forwarding_register_table(conn):
+    ddl = """
+    CREATE TABLE IF NOT EXISTS customer_forwarding_registers (
+      register_id INT AUTO_INCREMENT PRIMARY KEY,
+      customer_name VARCHAR(255) NOT NULL,
+      tracking_number VARCHAR(255) NOT NULL,
+      item_name VARCHAR(255) NOT NULL,
+      remarks TEXT NULL,
+      status ENUM('pending','processed','cancelled') NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_tracking_number (tracking_number)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+    with conn.cursor() as cur:
+        cur.execute(ddl)
+    conn.commit()
+
+
 def ensure_frontend_config_tables(conn):
     ddl1 = """
     CREATE TABLE IF NOT EXISTS site_settings (
@@ -416,6 +435,7 @@ cursor.close()
 st.success("✅ DB connected")
 ensure_return_request_tables(conn)
 ensure_frontend_config_tables(conn)
+ensure_forwarding_register_table(conn)
     
 #歷史名字搜尋
 
@@ -439,7 +459,7 @@ menu = st.sidebar.selectbox("功能選單", [
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
     "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息",
     "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價",
-    "📢 前台公告管理", "📮 匿名回饋管理"
+    "📢 前台公告管理", "📮 集運登記管理", "📮 匿名回饋管理"
 ])
 
 # ===== 功能實作 =====
@@ -1837,6 +1857,73 @@ elif menu == "📢 前台公告管理":
                 st.error(f"刪除失敗：{e}")
 
 
+
+
+elif menu == "📮 集運登記管理":
+    st.subheader("📮 集運登記管理")
+
+    df_reg = pd.read_sql("""
+        SELECT register_id, customer_name, tracking_number, item_name, remarks, status, created_at
+        FROM customer_forwarding_registers
+        ORDER BY created_at DESC, register_id DESC
+    """, conn)
+
+    if df_reg.empty:
+        st.info("目前沒有前台送出的集運登記資料。")
+    else:
+        df_show = df_reg.rename(columns={
+            "register_id": "登記編號",
+            "customer_name": "客戶名稱",
+            "tracking_number": "快遞單號",
+            "item_name": "商品名稱",
+            "remarks": "備註",
+            "status": "狀態",
+            "created_at": "建立時間",
+        })
+
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+        reg_ids = df_reg["register_id"].tolist()
+        picked_reg_id = st.selectbox("選擇要處理的登記編號", reg_ids)
+
+        picked_row = df_reg[df_reg["register_id"] == picked_reg_id].iloc[0]
+
+        st.markdown("### 🔎 登記內容")
+        st.write(f"**客戶名稱：** {picked_row['customer_name']}")
+        st.write(f"**快遞單號：** {picked_row['tracking_number']}")
+        st.write(f"**商品名稱：** {picked_row['item_name']}")
+        st.write(f"**備註：** {picked_row['remarks'] if picked_row['remarks'] else '—'}")
+        st.write(f"**狀態：** {picked_row['status']}")
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            if st.button("✅ 標記為已處理", use_container_width=True):
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE customer_forwarding_registers SET status='processed' WHERE register_id=%s",
+                            (picked_reg_id,)
+                        )
+                    conn.commit()
+                    st.success("已標記為已處理。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"更新失敗：{e}")
+
+        with c2:
+            if st.button("🗑 標記為取消", use_container_width=True):
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE customer_forwarding_registers SET status='cancelled' WHERE register_id=%s",
+                            (picked_reg_id,)
+                        )
+                    conn.commit()
+                    st.warning("已標記為取消。")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"更新失敗：{e}")
 
 
 # "匿名回饋管理":
