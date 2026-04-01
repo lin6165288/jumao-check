@@ -197,6 +197,8 @@ def ensure_forwarding_register_table(conn):
       customer_name VARCHAR(255) NOT NULL,
       tracking_number VARCHAR(255) NOT NULL,
       item_name VARCHAR(255) NOT NULL,
+      quantity INT NOT NULL DEFAULT 1,
+      unit_price_rmb DECIMAL(10,2) NOT NULL DEFAULT 0,
       remarks TEXT NULL,
       status ENUM('pending','processed','cancelled') NOT NULL DEFAULT 'pending',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -206,15 +208,26 @@ def ensure_forwarding_register_table(conn):
     """
     with conn.cursor() as cur:
         cur.execute(ddl)
+
+        # 舊表補欄位
+        try:
+            cur.execute("ALTER TABLE customer_forwarding_registers ADD COLUMN quantity INT NOT NULL DEFAULT 1")
+        except Exception:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE customer_forwarding_registers ADD COLUMN unit_price_rmb DECIMAL(10,2) NOT NULL DEFAULT 0")
+        except Exception:
+            pass
+
     conn.commit()
 
 
-def save_forwarding_register(customer_name, tracking_number, item_name, remarks):
+def save_forwarding_register(customer_name, tracking_number, item_name, quantity, unit_price_rmb, remarks):
     conn = get_connection()
     try:
         ensure_forwarding_register_table(conn)
 
-        # 先檢查是否已存在相同單號且未取消
         check_sql = """
         SELECT register_id, status
         FROM customer_forwarding_registers
@@ -236,15 +249,19 @@ def save_forwarding_register(customer_name, tracking_number, item_name, remarks)
                     customer_name,
                     tracking_number,
                     item_name,
+                    quantity,
+                    unit_price_rmb,
                     remarks,
                     status
                 )
-                VALUES (%s, %s, %s, %s, 'pending')
+                VALUES (%s, %s, %s, %s, %s, %s, 'pending')
                 """,
                 (
                     customer_name.strip(),
                     tracking_number.strip(),
                     item_name.strip(),
+                    int(quantity),
+                    float(unit_price_rmb),
                     remarks.strip() if remarks else ""
                 )
             )
@@ -1162,7 +1179,9 @@ def page_forwarding_register():
         with st.form("forwarding_form"):
             customer_name = st.text_input("登記包裹用名稱（默認 LINE 名稱）")
             tracking_number = st.text_input("快遞單號")
-            item_name = st.text_input("商品名稱 / 包裹內容")
+            item_name = st.text_input("內容物")
+            quantity = st.number_input("數量", min_value=1, step=1, value=1)
+            unit_price_rmb = st.number_input("單價（人民幣）", min_value=0.0, step=1.0, value=0.0)
             remarks = st.text_area(
                 "備註（選填）",
                 placeholder="例如：補郵包裹、賣家分批寄出、同賣場第二件"
@@ -1183,12 +1202,16 @@ def page_forwarding_register():
         elif not tracking_number.strip():
             st.warning("請輸入快遞單號。")
         elif not item_name.strip():
-            st.warning("請輸入商品名稱 / 包裹內容。")
+            st.warning("請輸入內容物。")
+        elif int(quantity) <= 0:
+            st.warning("數量需大於 0。")
         else:
             ok, register_id, err = save_forwarding_register(
                 customer_name=customer_name,
                 tracking_number=tracking_number,
                 item_name=item_name,
+                quantity=quantity,
+                unit_price_rmb=unit_price_rmb,
                 remarks=remarks
             )
 
