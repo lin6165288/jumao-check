@@ -239,7 +239,7 @@ def save_forwarding_register(customer_name, tracking_number, item_name, quantity
         if not df_check.empty:
             old_id = int(df_check.iloc[0]["register_id"])
             old_status = str(df_check.iloc[0]["status"])
-            return False, None, f"此快遞單號已登記過（登記編號：#{old_id}，狀態：{old_status}）"
+            return False, None, f"此快遞單號已登記過，若需修改請私訊橘貓～"
 
         with conn.cursor() as cur:
             cur.execute(
@@ -1216,7 +1216,7 @@ def page_forwarding_register():
             )
 
             if ok:
-                st.session_state["forwarding_success_msg"] = f"已送出集運包裹登記！登記編號：#{register_id}"
+                st.session_state["forwarding_success_msg"] = f"已送出集運包裹登記！"
                 st.rerun()
             else:
                 st.error(f"送出失敗：{err}")
