@@ -479,7 +479,7 @@ elif menu == "🧾 新增訂單":
     defaults = {
         "add_tracking_number": "",
         "add_amount_rmb": 0.0,
-        "add_service_fee": 30.0,
+        "add_service_fee": 0.0 if st.session_state.get("add_platform", "集運") == "集運" else 30.0,
         "add_weight_kg": 0.0,
         "add_is_arrived": False,
         "add_is_returned": False,
@@ -500,7 +500,7 @@ elif menu == "🧾 新增訂單":
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
         st.session_state["add_amount_rmb"] = 0.0
-        st.session_state["add_service_fee"] = 30.0
+        st.session_state["add_service_fee"] = 0.0 if st.session_state.get("add_platform", "集運") == "集運" else 30.0
         st.session_state["add_weight_kg"] = 0.0
         st.session_state["add_is_arrived"] = False
         st.session_state["add_is_returned"] = False
@@ -557,11 +557,23 @@ elif menu == "🧾 新增訂單":
 
     # ✅ 不用 form：欄位即時寫入 session_state，側欄按鈕才拿得到最新值
     order_time = st.date_input("下單日期", key="add_order_time")
+
+    old_platform = st.session_state.get("add_platform", "集運")
     platform = st.selectbox(
         "下單平台",
         ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東"],
         key="add_platform"
     )
+
+    # ✅ 平台切換時，自動調整手續費預設值
+    if platform != old_platform:
+        if platform == "集運":
+            st.session_state["add_service_fee"] = 0.0
+            st.rerun()
+        else:
+            if float(st.session_state.get("add_service_fee", 0.0)) == 0.0:
+                st.session_state["add_service_fee"] = 30.0
+            st.rerun()
 
     tracking_number = st.text_input("包裹單號", key="add_tracking_number")
     amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
