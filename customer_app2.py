@@ -188,7 +188,77 @@ def save_return_request(
 
     finally:
         conn.close()
-        
+
+
+def ensure_forwarding_register_table(conn):
+    ddl = """
+    CREATE TABLE IF NOT EXISTS customer_forwarding_registers (
+      register_id INT AUTO_INCREMENT PRIMARY KEY,
+      customer_name VARCHAR(255) NOT NULL,
+      tracking_number VARCHAR(255) NOT NULL,
+      item_name VARCHAR(255) NOT NULL,
+      remarks TEXT NULL,
+      status ENUM('pending','processed','cancelled') NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_tracking_number (tracking_number)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+    with conn.cursor() as cur:
+        cur.execute(ddl)
+    conn.commit()
+
+
+def save_forwarding_register(customer_name, tracking_number, item_name, remarks):
+    conn = get_connection()
+    try:
+        ensure_forwarding_register_table(conn)
+
+        # 先檢查是否已存在相同單號且未取消
+        check_sql = """
+        SELECT register_id, status
+        FROM customer_forwarding_registers
+        WHERE tracking_number = %s
+        LIMIT 1
+        """
+        df_check = pd.read_sql(check_sql, conn, params=[tracking_number.strip()])
+
+        if not df_check.empty:
+            old_id = int(df_check.iloc[0]["register_id"])
+            old_status = str(df_check.iloc[0]["status"])
+            return False, None, f"此快遞單號已登記過（登記編號：#{old_id}，狀態：{old_status}）"
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO customer_forwarding_registers
+                (
+                    customer_name,
+                    tracking_number,
+                    item_name,
+                    remarks,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, 'pending')
+                """,
+                (
+                    customer_name.strip(),
+                    tracking_number.strip(),
+                    item_name.strip(),
+                    remarks.strip() if remarks else ""
+                )
+            )
+            register_id = cur.lastrowid
+
+        conn.commit()
+        return True, register_id, None
+
+    except Exception as e:
+        conn.rollback()
+        return False, None, str(e)
+
+    finally:
+        conn.close()
 
 # =============================
 # 假資料（之後可改成資料庫讀取）
@@ -1077,16 +1147,56 @@ def page_forwarding_register():
     back_to_home_button()
 
     st.title("📮 集運客戶登記集運包裹")
-    st.info("這裡之後可放：客戶填寫單號、貨品名稱、備註、圖片上傳、送出登記。")
+    st.caption("請填寫集運包裹資料，送出後橘貓會於後台核對登記。")
 
-    with st.form("forwarding_form"):
-        st.text_input("客戶姓名")
-        st.text_input("快遞單號")
-        st.text_input("貨品名稱")
-        st.text_area("備註")
-        submitted = st.form_submit_button("送出登記")
-        if submitted:
-            st.success("已送出（目前為示意頁面，尚未寫入資料庫）。")
+    st.session_state.setdefault("forwarding_success_msg", "")
+
+    if st.session_state.get("forwarding_success_msg"):
+        st.success(st.session_state["forwarding_success_msg"])
+        st.info("若資料填錯，請直接私訊橘貓協助更正。")
+        st.session_state["forwarding_success_msg"] = ""
+
+    with st.container(border=True):
+        st.markdown("### 📝 登記資料")
+
+        with st.form("forwarding_form"):
+            customer_name = st.text_input("登記包裹用名稱（默認 LINE 名稱）")
+            tracking_number = st.text_input("快遞單號")
+            item_name = st.text_input("商品名稱 / 包裹內容")
+            remarks = st.text_area(
+                "備註（選填）",
+                placeholder="例如：補郵包裹、賣家分批寄出、同賣場第二件"
+            )
+
+            submitted = st.form_submit_button("送出登記", use_container_width=True)
+
+    with st.container(border=True):
+        st.markdown("### 📌 提醒事項")
+        st.write("1. 請確認快遞單號填寫正確。")
+        st.write("2. 若同一包裹重複登記，系統會提醒。")
+        st.write("3. 若資料填錯，請直接私訊橘貓協助更正。")
+        st.write("4. 送出後僅代表已登記，實際是否入庫仍需依後台核對為準。")
+
+    if submitted:
+        if not customer_name.strip():
+            st.warning("請輸入登記包裹用名稱。")
+        elif not tracking_number.strip():
+            st.warning("請輸入快遞單號。")
+        elif not item_name.strip():
+            st.warning("請輸入商品名稱 / 包裹內容。")
+        else:
+            ok, register_id, err = save_forwarding_register(
+                customer_name=customer_name,
+                tracking_number=tracking_number,
+                item_name=item_name,
+                remarks=remarks
+            )
+
+            if ok:
+                st.session_state["forwarding_success_msg"] = f"已送出集運包裹登記！登記編號：#{register_id}"
+                st.rerun()
+            else:
+                st.error(f"送出失敗：{err}")
 
 
 def page_member_center():
