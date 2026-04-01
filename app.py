@@ -56,6 +56,8 @@ def ensure_forwarding_register_table(conn):
       customer_name VARCHAR(255) NOT NULL,
       tracking_number VARCHAR(255) NOT NULL,
       item_name VARCHAR(255) NOT NULL,
+      quantity INT NOT NULL DEFAULT 1,
+      unit_price_rmb DECIMAL(10,2) NOT NULL DEFAULT 0,
       remarks TEXT NULL,
       status ENUM('pending','processed','cancelled') NOT NULL DEFAULT 'pending',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -65,6 +67,17 @@ def ensure_forwarding_register_table(conn):
     """
     with conn.cursor() as cur:
         cur.execute(ddl)
+
+        try:
+            cur.execute("ALTER TABLE customer_forwarding_registers ADD COLUMN quantity INT NOT NULL DEFAULT 1")
+        except Exception:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE customer_forwarding_registers ADD COLUMN unit_price_rmb DECIMAL(10,2) NOT NULL DEFAULT 0")
+        except Exception:
+            pass
+
     conn.commit()
 
 
@@ -1863,7 +1876,7 @@ elif menu == "📮 集運登記管理":
     st.subheader("📮 集運登記管理")
 
     df_reg = pd.read_sql("""
-        SELECT register_id, customer_name, tracking_number, item_name, remarks, status, created_at
+        SELECT register_id, customer_name, tracking_number, item_name, quantity, unit_price_rmb, remarks, status, created_at
         FROM customer_forwarding_registers
         ORDER BY created_at DESC, register_id DESC
     """, conn)
@@ -1875,7 +1888,9 @@ elif menu == "📮 集運登記管理":
             "register_id": "登記編號",
             "customer_name": "客戶名稱",
             "tracking_number": "快遞單號",
-            "item_name": "商品名稱",
+            "item_name": "內容物",
+            "quantity": "數量",
+            "unit_price_rmb": "單價（人民幣）",
             "remarks": "備註",
             "status": "狀態",
             "created_at": "建立時間",
@@ -1891,7 +1906,9 @@ elif menu == "📮 集運登記管理":
         st.markdown("### 🔎 登記內容")
         st.write(f"**客戶名稱：** {picked_row['customer_name']}")
         st.write(f"**快遞單號：** {picked_row['tracking_number']}")
-        st.write(f"**商品名稱：** {picked_row['item_name']}")
+        st.write(f"**內容物：** {picked_row['item_name']}")
+        st.write(f"**數量：** {picked_row['quantity']}")
+        st.write(f"**單價（人民幣）：** {picked_row['unit_price_rmb']}")
         st.write(f"**備註：** {picked_row['remarks'] if picked_row['remarks'] else '—'}")
         st.write(f"**狀態：** {picked_row['status']}")
 
