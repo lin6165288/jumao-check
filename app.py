@@ -1875,6 +1875,8 @@ elif menu == "📢 前台公告管理":
 elif menu == "📮 集運登記管理":
     st.subheader("📮 集運登記管理")
 
+    st.session_state.setdefault("show_edit_forwarding_form", False)
+
     df_reg = pd.read_sql("""
         SELECT register_id, customer_name, tracking_number, item_name, quantity, unit_price_rmb, remarks, status, created_at
         FROM customer_forwarding_registers
@@ -1903,72 +1905,7 @@ elif menu == "📮 集運登記管理":
 
         picked_row = df_reg[df_reg["register_id"] == picked_reg_id].iloc[0]
 
-        st.markdown("### ✏️ 編輯登記內容")
-
-        with st.form("edit_forwarding_register_form"):
-            edit_customer_name = st.text_input("客戶名稱", value=str(picked_row["customer_name"] or ""))
-            edit_tracking_number = st.text_input("快遞單號", value=str(picked_row["tracking_number"] or ""))
-            edit_item_name = st.text_input("內容物", value=str(picked_row["item_name"] or ""))
-            edit_quantity = st.number_input("數量", min_value=1, step=1, value=int(picked_row["quantity"] or 1))
-            edit_unit_price_rmb = st.number_input("單價（人民幣）", min_value=0.0, step=1.0, value=float(picked_row["unit_price_rmb"] or 0.0))
-            edit_remarks = st.text_area("備註", value=str(picked_row["remarks"] or ""))
-            edit_status = st.selectbox(
-                "狀態",
-                ["pending", "processed", "cancelled"],
-                index=["pending", "processed", "cancelled"].index(str(picked_row["status"]))
-            )
-
-            save_edit = st.form_submit_button("💾 儲存修改")
-
-        if save_edit:
-            try:
-                # 若改了快遞單號，要檢查是否撞到別筆
-                df_dup = pd.read_sql(
-                    """
-                    SELECT register_id
-                    FROM customer_forwarding_registers
-                    WHERE tracking_number = %s
-                      AND register_id <> %s
-                    LIMIT 1
-                    """,
-                    conn,
-                    params=[edit_tracking_number.strip(), picked_reg_id]
-                )
-
-                if not df_dup.empty:
-                    st.error("此快遞單號已被其他登記資料使用，請確認後再儲存。")
-                else:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            """
-                            UPDATE customer_forwarding_registers
-                            SET customer_name = %s,
-                                tracking_number = %s,
-                                item_name = %s,
-                                quantity = %s,
-                                unit_price_rmb = %s,
-                                remarks = %s,
-                                status = %s
-                            WHERE register_id = %s
-                            """,
-                            (
-                                edit_customer_name.strip(),
-                                edit_tracking_number.strip(),
-                                edit_item_name.strip(),
-                                int(edit_quantity),
-                                float(edit_unit_price_rmb),
-                                edit_remarks.strip(),
-                                edit_status,
-                                int(picked_reg_id)
-                            )
-                        )
-                    conn.commit()
-                    st.success("已更新集運登記內容。")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"更新失敗：{e}")
-
-        st.markdown("### 🔎 目前內容")
+        st.markdown("### 🔎 登記內容")
         st.write(f"**客戶名稱：** {picked_row['customer_name']}")
         st.write(f"**快遞單號：** {picked_row['tracking_number']}")
         st.write(f"**內容物：** {picked_row['item_name']}")
@@ -1977,12 +1914,107 @@ elif menu == "📮 集運登記管理":
         st.write(f"**備註：** {picked_row['remarks'] if picked_row['remarks'] else '—'}")
         st.write(f"**狀態：** {picked_row['status']}")
 
+        c_top1, c_top2 = st.columns(2)
+
+        with c_top1:
+            if st.button("✏️ 編輯這筆登記", use_container_width=True):
+                st.session_state["show_edit_forwarding_form"] = True
+                st.rerun()
+
+        with c_top2:
+            if st.button("🗑 直接刪除此筆登記", use_container_width=True):
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "DELETE FROM customer_forwarding_registers WHERE register_id = %s",
+                            (picked_reg_id,)
+                        )
+                    conn.commit()
+                    st.success("已刪除此筆集運登記。")
+                    st.session_state["show_edit_forwarding_form"] = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"刪除失敗：{e}")
+
+        if st.session_state.get("show_edit_forwarding_form", False):
+            st.markdown("### ✏️ 編輯登記內容")
+
+            with st.form("edit_forwarding_register_form"):
+                edit_customer_name = st.text_input("客戶名稱", value=str(picked_row["customer_name"] or ""))
+                edit_tracking_number = st.text_input("快遞單號", value=str(picked_row["tracking_number"] or ""))
+                edit_item_name = st.text_input("內容物", value=str(picked_row["item_name"] or ""))
+                edit_quantity = st.number_input("數量", min_value=1, step=1, value=int(picked_row["quantity"] or 1))
+                edit_unit_price_rmb = st.number_input("單價（人民幣）", min_value=0.0, step=1.0, value=float(picked_row["unit_price_rmb"] or 0.0))
+                edit_remarks = st.text_area("備註", value=str(picked_row["remarks"] or ""))
+                edit_status = st.selectbox(
+                    "狀態",
+                    ["pending", "processed", "cancelled"],
+                    index=["pending", "processed", "cancelled"].index(str(picked_row["status"]))
+                )
+
+                col_save, col_cancel = st.columns(2)
+                with col_save:
+                    save_edit = st.form_submit_button("💾 儲存修改", use_container_width=True)
+                with col_cancel:
+                    cancel_edit = st.form_submit_button("取消編輯", use_container_width=True)
+
+            if cancel_edit:
+                st.session_state["show_edit_forwarding_form"] = False
+                st.rerun()
+
+            if save_edit:
+                try:
+                    df_dup = pd.read_sql(
+                        """
+                        SELECT register_id
+                        FROM customer_forwarding_registers
+                        WHERE tracking_number = %s
+                          AND register_id <> %s
+                        LIMIT 1
+                        """,
+                        conn,
+                        params=[edit_tracking_number.strip(), picked_reg_id]
+                    )
+
+                    if not df_dup.empty:
+                        st.error("此快遞單號已被其他登記資料使用，請確認後再儲存。")
+                    else:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                UPDATE customer_forwarding_registers
+                                SET customer_name = %s,
+                                    tracking_number = %s,
+                                    item_name = %s,
+                                    quantity = %s,
+                                    unit_price_rmb = %s,
+                                    remarks = %s,
+                                    status = %s
+                                WHERE register_id = %s
+                                """,
+                                (
+                                    edit_customer_name.strip(),
+                                    edit_tracking_number.strip(),
+                                    edit_item_name.strip(),
+                                    int(edit_quantity),
+                                    float(edit_unit_price_rmb),
+                                    edit_remarks.strip(),
+                                    edit_status,
+                                    int(picked_reg_id)
+                                )
+                            )
+                        conn.commit()
+                        st.success("已更新集運登記內容。")
+                        st.session_state["show_edit_forwarding_form"] = False
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"更新失敗：{e}")
+
         c1, c2 = st.columns(2)
 
         with c1:
             if st.button("✅ 標記為已處理並新增訂單", use_container_width=True):
                 try:
-                    # 重新抓最新資料，避免你剛編輯完但 picked_row 還是舊值
                     latest_df = pd.read_sql(
                         """
                         SELECT register_id, customer_name, tracking_number, item_name, quantity, unit_price_rmb, remarks, status
@@ -2063,6 +2095,7 @@ elif menu == "📮 集運登記管理":
                         else:
                             st.warning("已標記為已處理，但 orders 已有相同單號，所以沒有重複新增訂單。")
 
+                        st.session_state["show_edit_forwarding_form"] = False
                         st.rerun()
 
                 except Exception as e:
@@ -2078,6 +2111,7 @@ elif menu == "📮 集運登記管理":
                         )
                     conn.commit()
                     st.warning("已標記為取消。")
+                    st.session_state["show_edit_forwarding_form"] = False
                     st.rerun()
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
