@@ -482,8 +482,8 @@ def page_home():
 
     with row2_col1:
         feature_card(
-            "4. 集運客戶登記集運包裹",
-            "提供集運客戶自行填寫快遞單號、品項與備註，方便後台核對與入庫。",
+            "4. 登記集運包裹",
+            "自行填寫快遞單號、品項與備註，方便後台核對與入庫。",
             "登記集運包裹",
             "go_forwarding",
             "forwarding_register",
@@ -1163,7 +1163,7 @@ def page_quote():
 def page_forwarding_register():
     back_to_home_button()
 
-    st.title("📮 集運客戶登記集運包裹")
+    st.title("📮 登記集運包裹")
     st.caption("請填寫集運包裹資料，送出後橘貓會於後台核對登記。")
 
     st.session_state.setdefault("forwarding_success_msg", "")
