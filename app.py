@@ -1903,7 +1903,72 @@ elif menu == "📮 集運登記管理":
 
         picked_row = df_reg[df_reg["register_id"] == picked_reg_id].iloc[0]
 
-        st.markdown("### 🔎 登記內容")
+        st.markdown("### ✏️ 編輯登記內容")
+
+        with st.form("edit_forwarding_register_form"):
+            edit_customer_name = st.text_input("客戶名稱", value=str(picked_row["customer_name"] or ""))
+            edit_tracking_number = st.text_input("快遞單號", value=str(picked_row["tracking_number"] or ""))
+            edit_item_name = st.text_input("內容物", value=str(picked_row["item_name"] or ""))
+            edit_quantity = st.number_input("數量", min_value=1, step=1, value=int(picked_row["quantity"] or 1))
+            edit_unit_price_rmb = st.number_input("單價（人民幣）", min_value=0.0, step=1.0, value=float(picked_row["unit_price_rmb"] or 0.0))
+            edit_remarks = st.text_area("備註", value=str(picked_row["remarks"] or ""))
+            edit_status = st.selectbox(
+                "狀態",
+                ["pending", "processed", "cancelled"],
+                index=["pending", "processed", "cancelled"].index(str(picked_row["status"]))
+            )
+
+            save_edit = st.form_submit_button("💾 儲存修改")
+
+        if save_edit:
+            try:
+                # 若改了快遞單號，要檢查是否撞到別筆
+                df_dup = pd.read_sql(
+                    """
+                    SELECT register_id
+                    FROM customer_forwarding_registers
+                    WHERE tracking_number = %s
+                      AND register_id <> %s
+                    LIMIT 1
+                    """,
+                    conn,
+                    params=[edit_tracking_number.strip(), picked_reg_id]
+                )
+
+                if not df_dup.empty:
+                    st.error("此快遞單號已被其他登記資料使用，請確認後再儲存。")
+                else:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE customer_forwarding_registers
+                            SET customer_name = %s,
+                                tracking_number = %s,
+                                item_name = %s,
+                                quantity = %s,
+                                unit_price_rmb = %s,
+                                remarks = %s,
+                                status = %s
+                            WHERE register_id = %s
+                            """,
+                            (
+                                edit_customer_name.strip(),
+                                edit_tracking_number.strip(),
+                                edit_item_name.strip(),
+                                int(edit_quantity),
+                                float(edit_unit_price_rmb),
+                                edit_remarks.strip(),
+                                edit_status,
+                                int(picked_reg_id)
+                            )
+                        )
+                    conn.commit()
+                    st.success("已更新集運登記內容。")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"更新失敗：{e}")
+
+        st.markdown("### 🔎 目前內容")
         st.write(f"**客戶名稱：** {picked_row['customer_name']}")
         st.write(f"**快遞單號：** {picked_row['tracking_number']}")
         st.write(f"**內容物：** {picked_row['item_name']}")
@@ -1915,76 +1980,105 @@ elif menu == "📮 集運登記管理":
         c1, c2 = st.columns(2)
 
         with c1:
-            if st.button("✅ 標記為已處理", use_container_width=True):
+            if st.button("✅ 標記為已處理並新增訂單", use_container_width=True):
                 try:
-                    picked_row = df_reg[df_reg["register_id"] == picked_reg_id].iloc[0]
-
-                    customer_name = str(picked_row["customer_name"]).strip()
-                    tracking_number = str(picked_row["tracking_number"]).strip()
-                    item_name = str(picked_row["item_name"]).strip()
-                    quantity = int(picked_row["quantity"])
-                    unit_price_rmb = float(picked_row["unit_price_rmb"])
-                    remarks = str(picked_row["remarks"]).strip() if pd.notna(picked_row["remarks"]) else ""
-
-                    amount_rmb = 0
-
-                    df_exist = pd.read_sql(
-                        "SELECT order_id FROM orders WHERE tracking_number = %s LIMIT 1",
+                    # 重新抓最新資料，避免你剛編輯完但 picked_row 還是舊值
+                    latest_df = pd.read_sql(
+                        """
+                        SELECT register_id, customer_name, tracking_number, item_name, quantity, unit_price_rmb, remarks, status
+                        FROM customer_forwarding_registers
+                        WHERE register_id = %s
+                        LIMIT 1
+                        """,
                         conn,
-                        params=[tracking_number]
+                        params=[picked_reg_id]
                     )
 
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE customer_forwarding_registers SET status='processed' WHERE register_id=%s",
-                            (picked_reg_id,)
+                    if latest_df.empty:
+                        st.error("找不到這筆登記資料。")
+                    else:
+                        latest_row = latest_df.iloc[0]
+
+                        customer_name = str(latest_row["customer_name"]).strip()
+                        tracking_number = str(latest_row["tracking_number"]).strip()
+                        item_name = str(latest_row["item_name"]).strip()
+                        quantity = int(latest_row["quantity"])
+                        unit_price_rmb = float(latest_row["unit_price_rmb"])
+                        remarks = str(latest_row["remarks"]).strip() if pd.notna(latest_row["remarks"]) else ""
+
+                        amount_rmb = 0
+
+                        df_exist = pd.read_sql(
+                            "SELECT order_id FROM orders WHERE tracking_number = %s LIMIT 1",
+                            conn,
+                            params=[tracking_number]
                         )
 
-                        if df_exist.empty:
-                            auto_remarks = f"前台集運登記｜內容物：{item_name}｜數量：{quantity}｜單價：{unit_price_rmb} RMB"
-                            if remarks:
-                                auto_remarks += f"｜備註：{remarks}"
-
+                        with conn.cursor() as cur:
                             cur.execute(
-                                """
-                                INSERT INTO orders
-                                (
-                                    order_time,
-                                    customer_name,
-                                    platform,
-                                    tracking_number,
-                                    amount_rmb,
-                                    weight_kg,
-                                    is_arrived,
-                                    is_returned,
-                                    service_fee,
-                                    remarks
-                                )
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                """,
-                                (
-                                    datetime.today().date(),
-                                    customer_name,
-                                    "集運",
-                                    tracking_number,
-                                    amount_rmb,
-                                    0.0,
-                                    0,
-                                    0,
-                                    0.0,
-                                    auto_remarks
-                                )
+                                "UPDATE customer_forwarding_registers SET status='processed' WHERE register_id=%s",
+                                (picked_reg_id,)
                             )
-        
+
+                            if df_exist.empty:
+                                auto_remarks = f"前台集運登記｜內容物：{item_name}｜數量：{quantity}｜單價：{unit_price_rmb} RMB"
+                                if remarks:
+                                    auto_remarks += f"｜備註：{remarks}"
+
+                                cur.execute(
+                                    """
+                                    INSERT INTO orders
+                                    (
+                                        order_time,
+                                        customer_name,
+                                        platform,
+                                        tracking_number,
+                                        amount_rmb,
+                                        weight_kg,
+                                        is_arrived,
+                                        is_returned,
+                                        service_fee,
+                                        remarks
+                                    )
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    """,
+                                    (
+                                        datetime.today().date(),
+                                        customer_name,
+                                        "集運",
+                                        tracking_number,
+                                        amount_rmb,
+                                        0.0,
+                                        0,
+                                        0,
+                                        0.0,
+                                        auto_remarks
+                                    )
+                                )
+
+                        conn.commit()
+
+                        if df_exist.empty:
+                            st.success("已標記為已處理，並成功新增到訂單。")
+                        else:
+                            st.warning("已標記為已處理，但 orders 已有相同單號，所以沒有重複新增訂單。")
+
+                        st.rerun()
+
+                except Exception as e:
+                    st.error(f"更新失敗：{e}")
+
+        with c2:
+            if st.button("🗑 標記為取消", use_container_width=True):
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE customer_forwarding_registers SET status='cancelled' WHERE register_id=%s",
+                            (picked_reg_id,)
+                        )
                     conn.commit()
-
-                    if df_exist.empty:
-                        st.success("已標記為已處理，並成功新增到訂單。")
-                    else:
-                        st.warning("已標記為已處理，但 orders 已有相同單號，所以沒有重複新增訂單。")
-
+                    st.warning("已標記為取消。")
                     st.rerun()
-
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
 
