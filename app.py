@@ -15,11 +15,162 @@ if "db_inited" not in st.session_state:
     init_db()
     st.session_state["db_inited"] = True
 
+
+
+def ensure_member_exists(conn, customer_name):
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT IGNORE INTO members (customer_name)
+        VALUES (%s)
+    """, (customer_name,))
+    conn.commit()
+    cur.close()
+
+
+def get_member_level(conn, customer_name):
+    cur = conn.cursor(dictionary=True)
+    cur.execute("""
+        SELECT member_level
+        FROM members
+        WHERE customer_name = %s
+        LIMIT 1
+    """, (customer_name,))
+    row = cur.fetchone()
+    cur.close()
+    if row and row.get("member_level"):
+        return row["member_level"]
+    return "一般"
+
+
+def calc_base_service_fee(amount_rmb):
+    amount_rmb = float(amount_rmb or 0)
+
+    if amount_rmb <= 0:
+        return 0
+    if amount_rmb < 500:
+        return 30
+
+    return math.floor(amount_rmb / 500) * 50
+
+
+def get_member_discount_rate(member_level):
+    mapping = {
+        "一般": 1.00,
+        "VIP1": 0.90,
+        "VIP2": 0.85,
+        "VIP3": 0.80
+    }
+    return mapping.get(member_level, 1.00)
+
+
+def calc_order_total(amount_rmb, exchange_rate, member_level="一般", extra_discount=0):
+    base_fee = calc_base_service_fee(amount_rmb)
+    vip_rate = get_member_discount_rate(member_level)
+    final_fee = round(base_fee * vip_rate, 2)
+    total_twd = round(float(amount_rmb or 0) * float(exchange_rate or 0) + final_fee - float(extra_discount or 0), 2)
+
+    return {
+        "original_service_fee": base_fee,
+        "vip_discount_rate": vip_rate,
+        "final_service_fee": final_fee,
+        "total_twd": max(total_twd, 0)
+    }
+
+
+
 #確認小視窗
 def show_toast_once(key: str, msg: str, icon: str = "✅"):
     if st.session_state.get(key):
         st.toast(msg, icon=icon)
         st.session_state[key] = False
+
+
+
+def ensure_members_table(conn):
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS members (
+        member_id INT AUTO_INCREMENT PRIMARY KEY,
+        customer_name VARCHAR(255) NOT NULL UNIQUE,
+        member_level VARCHAR(20) NOT NULL DEFAULT '一般',
+        wallet_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
+        account_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
+        coupon_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+    """)
+    conn.commit()
+    cur.close()
+
+
+def ensure_member_balance_logs_table(conn):
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS member_balance_logs (
+        log_id INT AUTO_INCREMENT PRIMARY KEY,
+        customer_name VARCHAR(255) NOT NULL,
+        balance_type VARCHAR(20) NOT NULL,
+        change_type VARCHAR(50) NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        note TEXT,
+        related_order_id INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    conn.commit()
+    cur.close()
+
+
+def ensure_payments_table(conn):
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS payments (
+        payment_id INT AUTO_INCREMENT PRIMARY KEY,
+        customer_name VARCHAR(255) NOT NULL,
+        order_id INT NULL,
+        payment_date DATE NOT NULL,
+        payment_method VARCHAR(20) NOT NULL,
+        amount_twd DECIMAL(10,2) NOT NULL DEFAULT 0,
+        note TEXT,
+        related_balance_type VARCHAR(20) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    conn.commit()
+    cur.close()
+
+
+def ensure_orders_reconcile_columns(conn):
+    cur = conn.cursor()
+
+    alter_sqls = [
+        "ALTER TABLE orders ADD COLUMN reconcile_enabled TINYINT(1) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN exchange_rate DECIMAL(10,2) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN member_level_snapshot VARCHAR(20) DEFAULT '一般'",
+        "ALTER TABLE orders ADD COLUMN original_service_fee DECIMAL(10,2) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN vip_discount_rate DECIMAL(10,2) DEFAULT 1.0",
+        "ALTER TABLE orders ADD COLUMN final_service_fee DECIMAL(10,2) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN extra_discount DECIMAL(10,2) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN total_twd DECIMAL(10,2) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN paid_amount DECIMAL(10,2) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN unpaid_amount DECIMAL(10,2) DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN payment_status VARCHAR(20) DEFAULT '未付款'",
+        "ALTER TABLE orders ADD COLUMN order_status VARCHAR(20) DEFAULT '正常'",
+        "ALTER TABLE orders ADD COLUMN cancel_note TEXT NULL"
+    ]
+
+    for sql in alter_sqls:
+        try:
+            cur.execute(sql)
+            conn.commit()
+        except:
+            pass
+
+    cur.close()
+
+
 
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
@@ -465,7 +616,10 @@ st.success("✅ DB connected")
 ensure_return_request_tables(conn)
 ensure_frontend_config_tables(conn)
 ensure_forwarding_register_table(conn)
+ensure_members_table(conn)
+ensure_member_balance_logs_table(conn)
 ensure_payments_table(conn)
+ensure_orders_reconcile_columns(conn)
     
 #歷史名字搜尋
 
@@ -520,22 +674,23 @@ if menu == "📋 訂單總表":
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
-    # ✅ 進頁面先顯示「上一輪」存的 toast（避免被 rerun 吃掉）
     if st.session_state.get("flash_toast"):
         st.toast(st.session_state["flash_toast"])
         st.session_state["flash_toast"] = None
 
     st.session_state.setdefault("add_platform", "集運")
+    st.session_state.setdefault("add_exchange_rate", 4.8)
+    st.session_state.setdefault("add_extra_discount", 0.0)
 
     def sync_service_fee_by_platform():
         if st.session_state.get("add_platform") == "集運":
             st.session_state["add_service_fee"] = 0.0
         else:
-            st.session_state["add_service_fee"] = 30.0
+            amt = float(st.session_state.get("add_amount_rmb", 0) or 0)
+            st.session_state["add_service_fee"] = float(calc_base_service_fee(amt))
 
-    default_fee = 0.0 if st.session_state["add_platform"] == "集運" else 30.0
+    default_fee = 0.0 if st.session_state["add_platform"] == "集運" else float(calc_base_service_fee(st.session_state.get("add_amount_rmb", 0)))
 
-    # ✅ 第一次進來時，初始化表單欄位
     defaults = {
         "add_tracking_number": "",
         "add_amount_rmb": 0.0,
@@ -544,18 +699,18 @@ elif menu == "🧾 新增訂單":
         "add_is_arrived": False,
         "add_is_returned": False,
         "add_remarks": "",
+        "add_exchange_rate": 4.8,
+        "add_extra_discount": 0.0,
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
 
     st.session_state.setdefault("add_order_time", datetime.today().date())
 
-    # ✅ 若上一輪要求清空姓名
     if st.session_state.get("clear_add_name"):
         st.session_state["add_name"] = ""
         st.session_state["clear_add_name"] = False
 
-    # ✅ 若上一輪要求清空「其他欄位」（日期/平台除外）
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
         st.session_state["add_amount_rmb"] = 0.0
@@ -564,18 +719,17 @@ elif menu == "🧾 新增訂單":
         st.session_state["add_is_arrived"] = False
         st.session_state["add_is_returned"] = False
         st.session_state["add_remarks"] = ""
+        st.session_state["add_exchange_rate"] = 4.8
+        st.session_state["add_extra_discount"] = 0.0
         st.session_state["clear_add_fields"] = False
 
-    # ✅ 左側固定快捷新增（不用滑到底）
     quick_submit = st.sidebar.button("✅ 新增訂單", use_container_width=True)
 
     name_options = get_customer_names(conn)
 
-    # 讓姓名/建議看起來是同一組
     with st.container(border=True):
         st.markdown("#### 客戶姓名")
 
-        # ✅ 是否保留上一筆姓名（預設 True）
         st.session_state.setdefault("keep_last_name", True)
 
         c1, c2 = st.columns([3, 1])
@@ -614,7 +768,6 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-    # ✅ 不用 form：欄位即時寫入 session_state，側欄按鈕才拿得到最新值
     order_time = st.date_input("下單日期", key="add_order_time")
 
     platform = st.selectbox(
@@ -626,7 +779,9 @@ elif menu == "🧾 新增訂單":
 
     tracking_number = st.text_input("包裹單號", key="add_tracking_number")
     amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
-    service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
+    exchange_rate = st.number_input("當下匯率", min_value=0.0, step=0.01, key="add_exchange_rate")
+    extra_discount = st.number_input("額外折扣（NT$）", min_value=0.0, step=1.0, key="add_extra_discount")
+
     weight_kg = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
 
     cA, cB = st.columns(2)
@@ -638,37 +793,107 @@ elif menu == "🧾 新增訂單":
     with st.expander("備註（可選）", expanded=False):
         remarks = st.text_area("備註", key="add_remarks")
 
-    # ✅ 主畫面也保留一顆按鈕（不想用側欄也能按）
+    # 即時預覽會員等級與收費
+    preview_name = (st.session_state.get("add_name") or "").strip()
+    preview_level = get_member_level(conn, preview_name) if preview_name else "一般"
+
+    if platform == "集運":
+        original_service_fee = 0.0
+        vip_discount_rate = 1.0
+        final_service_fee = 0.0
+        total_twd = round(float(amount_rmb or 0) * float(exchange_rate or 0) - float(extra_discount or 0), 2)
+        total_twd = max(total_twd, 0)
+    else:
+        calc_result = calc_order_total(amount_rmb, exchange_rate, preview_level, extra_discount)
+        original_service_fee = calc_result["original_service_fee"]
+        vip_discount_rate = calc_result["vip_discount_rate"]
+        final_service_fee = calc_result["final_service_fee"]
+        total_twd = calc_result["total_twd"]
+
+    st.markdown("### 💡 本單試算")
+    p1, p2, p3, p4 = st.columns(4)
+    p1.metric("會員等級", preview_level)
+    p2.metric("原始手續費", f"{original_service_fee:,.0f}")
+    p3.metric("折後手續費", f"{final_service_fee:,.0f}")
+    p4.metric("應收總額", f"{total_twd:,.0f}")
+
     submit_main = st.button("✅ 新增訂單", use_container_width=True)
 
-    # ✅ 兩顆按鈕都能新增
     if quick_submit or submit_main:
         name_to_save = (st.session_state.get("add_name") or "").strip()
+
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
+            # 若會員不存在就先建立
+            ensure_member_exists(conn, name_to_save)
+            member_level = get_member_level(conn, name_to_save)
+
+            if platform == "集運":
+                original_service_fee = 0.0
+                vip_discount_rate = 1.0
+                final_service_fee = 0.0
+                total_twd = round(float(amount_rmb or 0) * float(exchange_rate or 0) - float(extra_discount or 0), 2)
+                total_twd = max(total_twd, 0)
+            else:
+                calc_result = calc_order_total(amount_rmb, exchange_rate, member_level, extra_discount)
+                original_service_fee = calc_result["original_service_fee"]
+                vip_discount_rate = calc_result["vip_discount_rate"]
+                final_service_fee = calc_result["final_service_fee"]
+                total_twd = calc_result["total_twd"]
+
+            paid_amount = 0.0
+            unpaid_amount = total_twd
+            payment_status = "未付款"
+            reconcile_enabled = 1
+            order_status = "正常"
+
             cursor.execute(
                 """
-                INSERT INTO orders 
-                  (order_time, customer_name, platform, tracking_number,
-                   amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                INSERT INTO orders (
+                    order_time, customer_name, platform, tracking_number,
+                    amount_rmb, weight_kg, is_arrived, is_returned,
+                    service_fee, remarks,
+                    reconcile_enabled, exchange_rate, member_level_snapshot,
+                    original_service_fee, vip_discount_rate, final_service_fee,
+                    extra_discount, total_twd, paid_amount, unpaid_amount,
+                    payment_status, order_status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (order_time, name_to_save, platform, tracking_number,
-                 float(amount_rmb), float(weight_kg), bool(is_arrived), bool(is_returned),
-                 float(service_fee), remarks)
+                (
+                    order_time,
+                    name_to_save,
+                    platform,
+                    tracking_number,
+                    float(amount_rmb),
+                    float(weight_kg),
+                    bool(is_arrived),
+                    bool(is_returned),
+                    float(final_service_fee),   # 存折後手續費
+                    remarks,
+                    int(reconcile_enabled),
+                    float(exchange_rate),
+                    member_level,
+                    float(original_service_fee),
+                    float(vip_discount_rate),
+                    float(final_service_fee),
+                    float(extra_discount),
+                    float(total_twd),
+                    float(paid_amount),
+                    float(unpaid_amount),
+                    payment_status,
+                    order_status
+                )
             )
             conn.commit()
 
             st.cache_data.clear()
 
-            # ✅ 依設定決定是否清空姓名
             if not st.session_state.get("keep_last_name", True):
                 st.session_state["clear_add_name"] = True
 
-            # ✅ 清空「其他欄位」（日期/平台保留）
             st.session_state["clear_add_fields"] = True
-
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
 
