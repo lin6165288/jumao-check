@@ -599,7 +599,7 @@ cursor = conn.cursor()
 cursor.execute("SET time_zone = '+08:00'")
 cursor.close()
 
-st.success("✅ DB connected")
+#st.success("✅ DB connected")
 ensure_return_request_tables(conn)
 ensure_frontend_config_tables(conn)
 ensure_forwarding_register_table(conn)
@@ -623,7 +623,6 @@ def get_customer_names(conn):
     return [r[0] for r in rows if r and r[0]]
 
 
-cursor = conn.cursor(dictionary=True)
 
 
 
@@ -720,46 +719,7 @@ elif menu == "🧾 新增訂單":
         st.error(f"讀取客戶姓名失敗：{e}")
         name_options = []
 
-    with st.container(border=True):
-        st.markdown("#### 客戶姓名")
-
-        st.session_state.setdefault("keep_last_name", True)
-
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            st.toggle("新增後保留此客戶姓名", key="keep_last_name")
-        with c2:
-            if st.button("🧹 清空姓名", use_container_width=True):
-                st.session_state["clear_add_name"] = True
-                st.rerun()
-
-        st.text_input(
-            "輸入姓名",
-            key="add_name",
-            label_visibility="collapsed",
-            placeholder="請輸入客戶名稱"
-        )
-
-        q = (st.session_state.get("add_name") or "").strip().lower()
-        if q:
-            suggestions = [n for n in name_options if n.lower().startswith(q)][:8]
-            if suggestions:
-                st.caption("點一下直接帶入")
-                cols = st.columns(min(4, len(suggestions)))
-
-                def _pick(n):
-                    st.session_state["add_name"] = n
-
-                for i, s in enumerate(suggestions):
-                    cols[i % len(cols)].button(
-                        s,
-                        key=f"namepick_{i}",
-                        use_container_width=True,
-                        on_click=_pick,
-                        args=(s,)
-                    )
-        else:
-            st.caption("請輸入任一字母/文字")
+    st.text_input("客戶姓名", key="add_name")
 
     order_time = st.date_input("下單日期", key="add_order_time")
 
@@ -845,44 +805,45 @@ elif menu == "🧾 新增訂單":
             reconcile_enabled = 1
             order_status = "正常"
 
-            cursor.execute(
-                """
-                INSERT INTO orders (
-                    order_time, customer_name, platform, tracking_number,
-                    amount_rmb, weight_kg, is_arrived, is_returned,
-                    service_fee, remarks,
-                    reconcile_enabled, exchange_rate, member_level_snapshot,
-                    original_service_fee, vip_discount_rate, final_service_fee,
-                    extra_discount, total_twd, paid_amount, unpaid_amount,
-                    payment_status, order_status
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO orders (
+                        order_time, customer_name, platform, tracking_number,
+                        amount_rmb, weight_kg, is_arrived, is_returned,
+                        service_fee, remarks,
+                        reconcile_enabled, exchange_rate, member_level_snapshot,
+                        original_service_fee, vip_discount_rate, final_service_fee,
+                        extra_discount, total_twd, paid_amount, unpaid_amount,
+                        payment_status, order_status
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        order_time,
+                        name_to_save,
+                        platform,
+                        tracking_number,
+                        float(amount_rmb),
+                        float(weight_kg),
+                        bool(is_arrived),
+                        bool(is_returned),
+                        float(final_service_fee),
+                        remarks,
+                        int(reconcile_enabled),
+                        float(exchange_rate),
+                        member_level,
+                        float(original_service_fee),
+                        float(vip_discount_rate),
+                        float(final_service_fee),
+                        float(extra_discount),
+                        float(total_twd),
+                        float(paid_amount),
+                        float(unpaid_amount),
+                        payment_status,
+                        order_status
+                    )
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    order_time,
-                    name_to_save,
-                    platform,
-                    tracking_number,
-                    float(amount_rmb),
-                    float(weight_kg),
-                    bool(is_arrived),
-                    bool(is_returned),
-                    float(final_service_fee),   # 存折後手續費
-                    remarks,
-                    int(reconcile_enabled),
-                    float(exchange_rate),
-                    member_level,
-                    float(original_service_fee),
-                    float(vip_discount_rate),
-                    float(final_service_fee),
-                    float(extra_discount),
-                    float(total_twd),
-                    float(paid_amount),
-                    float(unpaid_amount),
-                    payment_status,
-                    order_status
-                )
-            )
             conn.commit()
 
             st.cache_data.clear()
