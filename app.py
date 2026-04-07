@@ -1,6 +1,4 @@
 import streamlit as st
-st.set_page_config(page_title="橘貓代購系統", layout="wide")
-st.title("🐾 橘貓代購｜訂單管理系統")
 import mysql.connector
 import pandas as pd
 import time
@@ -17,162 +15,11 @@ if "db_inited" not in st.session_state:
     init_db()
     st.session_state["db_inited"] = True
 
-
-
-def ensure_member_exists(conn, customer_name):
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT IGNORE INTO members (customer_name)
-        VALUES (%s)
-    """, (customer_name,))
-    conn.commit()
-    cur.close()
-
-
-def get_member_level(conn, customer_name):
-    cur = conn.cursor(dictionary=True)
-    cur.execute("""
-        SELECT member_level
-        FROM members
-        WHERE customer_name = %s
-        LIMIT 1
-    """, (customer_name,))
-    row = cur.fetchone()
-    cur.close()
-    if row and row.get("member_level"):
-        return row["member_level"]
-    return "一般"
-
-
-def calc_base_service_fee(amount_rmb):
-    amount_rmb = float(amount_rmb or 0)
-
-    if amount_rmb <= 0:
-        return 0
-    if amount_rmb < 500:
-        return 30
-
-    return math.floor(amount_rmb / 500) * 50
-
-
-def get_member_discount_rate(member_level):
-    mapping = {
-        "一般": 1.00,
-        "VIP1": 0.90,
-        "VIP2": 0.85,
-        "VIP3": 0.80
-    }
-    return mapping.get(member_level, 1.00)
-
-
-def calc_order_total(amount_rmb, exchange_rate, member_level="一般", extra_discount=0):
-    base_fee = calc_base_service_fee(amount_rmb)
-    vip_rate = get_member_discount_rate(member_level)
-    final_fee = round(base_fee * vip_rate, 2)
-    total_twd = round(float(amount_rmb or 0) * float(exchange_rate or 0) + final_fee - float(extra_discount or 0), 2)
-
-    return {
-        "original_service_fee": base_fee,
-        "vip_discount_rate": vip_rate,
-        "final_service_fee": final_fee,
-        "total_twd": max(total_twd, 0)
-    }
-
-
-
 #確認小視窗
 def show_toast_once(key: str, msg: str, icon: str = "✅"):
     if st.session_state.get(key):
         st.toast(msg, icon=icon)
         st.session_state[key] = False
-
-
-
-def ensure_members_table(conn):
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS members (
-        member_id INT AUTO_INCREMENT PRIMARY KEY,
-        customer_name VARCHAR(255) NOT NULL UNIQUE,
-        member_level VARCHAR(20) NOT NULL DEFAULT '一般',
-        wallet_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
-        account_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
-        coupon_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
-        note TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-    cur.close()
-
-
-def ensure_member_balance_logs_table(conn):
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS member_balance_logs (
-        log_id INT AUTO_INCREMENT PRIMARY KEY,
-        customer_name VARCHAR(255) NOT NULL,
-        balance_type VARCHAR(20) NOT NULL,
-        change_type VARCHAR(50) NOT NULL,
-        amount DECIMAL(10,2) NOT NULL,
-        note TEXT,
-        related_order_id INT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-    cur.close()
-
-
-def ensure_payments_table(conn):
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS payments (
-        payment_id INT AUTO_INCREMENT PRIMARY KEY,
-        customer_name VARCHAR(255) NOT NULL,
-        order_id INT NULL,
-        payment_date DATE NOT NULL,
-        payment_method VARCHAR(20) NOT NULL,
-        amount_twd DECIMAL(10,2) NOT NULL DEFAULT 0,
-        note TEXT,
-        related_balance_type VARCHAR(20) NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-    cur.close()
-
-
-def ensure_orders_reconcile_columns(conn):
-    cur = conn.cursor()
-
-    alter_sqls = [
-        "ALTER TABLE orders ADD COLUMN reconcile_enabled TINYINT(1) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN exchange_rate DECIMAL(10,2) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN member_level_snapshot VARCHAR(20) DEFAULT '一般'",
-        "ALTER TABLE orders ADD COLUMN original_service_fee DECIMAL(10,2) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN vip_discount_rate DECIMAL(10,2) DEFAULT 1.0",
-        "ALTER TABLE orders ADD COLUMN final_service_fee DECIMAL(10,2) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN extra_discount DECIMAL(10,2) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN total_twd DECIMAL(10,2) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN paid_amount DECIMAL(10,2) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN unpaid_amount DECIMAL(10,2) DEFAULT 0",
-        "ALTER TABLE orders ADD COLUMN payment_status VARCHAR(20) DEFAULT '未付款'",
-        "ALTER TABLE orders ADD COLUMN order_status VARCHAR(20) DEFAULT '正常'",
-        "ALTER TABLE orders ADD COLUMN cancel_note TEXT NULL"
-    ]
-
-    for sql in alter_sqls:
-        try:
-            cur.execute(sql)
-            conn.commit()
-        except:
-            pass
-
-    cur.close()
-
-
 
 
 # ===== 入庫失敗佇列（純本機 JSON，無需改資料表） =====
@@ -200,7 +47,6 @@ def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last
     with conn.cursor() as cur:
         cur.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
     conn.commit()
-
 
 
 def ensure_forwarding_register_table(conn):
@@ -599,37 +445,32 @@ cursor = conn.cursor()
 cursor.execute("SET time_zone = '+08:00'")
 cursor.close()
 
-#st.success("✅ DB connected")
+st.success("✅ DB connected")
 ensure_return_request_tables(conn)
 ensure_frontend_config_tables(conn)
 ensure_forwarding_register_table(conn)
-ensure_members_table(conn)
-ensure_member_balance_logs_table(conn)
-ensure_payments_table(conn)
-
     
 #歷史名字搜尋
 
 def get_customer_names(conn):
-    cur = conn.cursor()
-    cur.execute("""
+    df = pd.read_sql("""
         SELECT DISTINCT customer_name
         FROM orders
         WHERE customer_name IS NOT NULL AND customer_name <> ''
         ORDER BY customer_name
-    """)
-    rows = cur.fetchall()
-    cur.close()
-    return [r[0] for r in rows if r and r[0]]
+    """, conn)
+    return df["customer_name"].tolist()
 
 
+cursor = conn.cursor(dictionary=True)
 
-
+st.set_page_config(page_title="橘貓代購系統", layout="wide")
+st.title("🐾 橘貓代購｜訂單管理系統")
 
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
-    "📦 可出貨名單", "💳 對帳功能", "📥 貼上入庫訊息",
+    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息",
     "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價",
     "📢 前台公告管理", "📮 集運登記管理", "📮 匿名回饋管理"
 ])
@@ -662,23 +503,22 @@ if menu == "📋 訂單總表":
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
+    # ✅ 進頁面先顯示「上一輪」存的 toast（避免被 rerun 吃掉）
     if st.session_state.get("flash_toast"):
         st.toast(st.session_state["flash_toast"])
         st.session_state["flash_toast"] = None
 
     st.session_state.setdefault("add_platform", "集運")
-    st.session_state.setdefault("add_exchange_rate", 4.8)
-    st.session_state.setdefault("add_extra_discount", 0.0)
 
     def sync_service_fee_by_platform():
         if st.session_state.get("add_platform") == "集運":
             st.session_state["add_service_fee"] = 0.0
         else:
-            amt = float(st.session_state.get("add_amount_rmb", 0) or 0)
-            st.session_state["add_service_fee"] = float(calc_base_service_fee(amt))
+            st.session_state["add_service_fee"] = 30.0
 
-    default_fee = 0.0 if st.session_state["add_platform"] == "集運" else float(calc_base_service_fee(st.session_state.get("add_amount_rmb", 0)))
+    default_fee = 0.0 if st.session_state["add_platform"] == "集運" else 30.0
 
+    # ✅ 第一次進來時，初始化表單欄位
     defaults = {
         "add_tracking_number": "",
         "add_amount_rmb": 0.0,
@@ -687,18 +527,18 @@ elif menu == "🧾 新增訂單":
         "add_is_arrived": False,
         "add_is_returned": False,
         "add_remarks": "",
-        "add_exchange_rate": 4.8,
-        "add_extra_discount": 0.0,
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
 
     st.session_state.setdefault("add_order_time", datetime.today().date())
 
+    # ✅ 若上一輪要求清空姓名
     if st.session_state.get("clear_add_name"):
         st.session_state["add_name"] = ""
         st.session_state["clear_add_name"] = False
 
+    # ✅ 若上一輪要求清空「其他欄位」（日期/平台除外）
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
         st.session_state["add_amount_rmb"] = 0.0
@@ -707,20 +547,57 @@ elif menu == "🧾 新增訂單":
         st.session_state["add_is_arrived"] = False
         st.session_state["add_is_returned"] = False
         st.session_state["add_remarks"] = ""
-        st.session_state["add_exchange_rate"] = 4.8
-        st.session_state["add_extra_discount"] = 0.0
         st.session_state["clear_add_fields"] = False
 
+    # ✅ 左側固定快捷新增（不用滑到底）
     quick_submit = st.sidebar.button("✅ 新增訂單", use_container_width=True)
 
-    try:
-        name_options = get_customer_names(conn)
-    except Exception as e:
-        st.error(f"讀取客戶姓名失敗：{e}")
-        name_options = []
+    name_options = get_customer_names(conn)
 
-    st.text_input("客戶姓名", key="add_name")
+    # 讓姓名/建議看起來是同一組
+    with st.container(border=True):
+        st.markdown("#### 客戶姓名")
 
+        # ✅ 是否保留上一筆姓名（預設 True）
+        st.session_state.setdefault("keep_last_name", True)
+
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            st.toggle("新增後保留此客戶姓名", key="keep_last_name")
+        with c2:
+            if st.button("🧹 清空姓名", use_container_width=True):
+                st.session_state["clear_add_name"] = True
+                st.rerun()
+
+        st.text_input(
+            "輸入姓名",
+            key="add_name",
+            label_visibility="collapsed",
+            placeholder="請輸入客戶名稱"
+        )
+
+        q = (st.session_state.get("add_name") or "").strip().lower()
+        if q:
+            suggestions = [n for n in name_options if n.lower().startswith(q)][:8]
+            if suggestions:
+                st.caption("點一下直接帶入")
+                cols = st.columns(min(4, len(suggestions)))
+
+                def _pick(n):
+                    st.session_state["add_name"] = n
+
+                for i, s in enumerate(suggestions):
+                    cols[i % len(cols)].button(
+                        s,
+                        key=f"namepick_{i}",
+                        use_container_width=True,
+                        on_click=_pick,
+                        args=(s,)
+                    )
+        else:
+            st.caption("請輸入任一字母/文字")
+
+    # ✅ 不用 form：欄位即時寫入 session_state，側欄按鈕才拿得到最新值
     order_time = st.date_input("下單日期", key="add_order_time")
 
     platform = st.selectbox(
@@ -732,9 +609,7 @@ elif menu == "🧾 新增訂單":
 
     tracking_number = st.text_input("包裹單號", key="add_tracking_number")
     amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
-    exchange_rate = st.number_input("當下匯率", min_value=0.0, step=0.01, key="add_exchange_rate")
-    extra_discount = st.number_input("額外折扣（NT$）", min_value=0.0, step=1.0, key="add_extra_discount")
-
+    service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
     weight_kg = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
 
     cA, cB = st.columns(2)
@@ -746,112 +621,37 @@ elif menu == "🧾 新增訂單":
     with st.expander("備註（可選）", expanded=False):
         remarks = st.text_area("備註", key="add_remarks")
 
-    # 即時預覽會員等級與收費
-    preview_name = (st.session_state.get("add_name") or "").strip()
-    try:
-        preview_level = get_member_level(conn, preview_name) if preview_name else "一般"
-    except Exception as e:
-        st.warning(f"讀取會員等級失敗：{e}")
-        preview_level = "一般"
-
-    if platform == "集運":
-        original_service_fee = 0.0
-        vip_discount_rate = 1.0
-        final_service_fee = 0.0
-        total_twd = round(float(amount_rmb or 0) * float(exchange_rate or 0) - float(extra_discount or 0), 2)
-        total_twd = max(total_twd, 0)
-    else:
-        calc_result = calc_order_total(amount_rmb, exchange_rate, preview_level, extra_discount)
-        original_service_fee = calc_result["original_service_fee"]
-        vip_discount_rate = calc_result["vip_discount_rate"]
-        final_service_fee = calc_result["final_service_fee"]
-        total_twd = calc_result["total_twd"]
-
-    st.markdown("### 💡 本單試算")
-    p1, p2, p3, p4 = st.columns(4)
-    p1.metric("會員等級", preview_level)
-    p2.metric("原始手續費", f"{original_service_fee:,.0f}")
-    p3.metric("折後手續費", f"{final_service_fee:,.0f}")
-    p4.metric("應收總額", f"{total_twd:,.0f}")
-
+    # ✅ 主畫面也保留一顆按鈕（不想用側欄也能按）
     submit_main = st.button("✅ 新增訂單", use_container_width=True)
 
+    # ✅ 兩顆按鈕都能新增
     if quick_submit or submit_main:
         name_to_save = (st.session_state.get("add_name") or "").strip()
-
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
-            # 若會員不存在就先建立
-            ensure_member_exists(conn, name_to_save)
-            member_level = get_member_level(conn, name_to_save)
-
-            if platform == "集運":
-                original_service_fee = 0.0
-                vip_discount_rate = 1.0
-                final_service_fee = 0.0
-                total_twd = round(float(amount_rmb or 0) * float(exchange_rate or 0) - float(extra_discount or 0), 2)
-                total_twd = max(total_twd, 0)
-            else:
-                calc_result = calc_order_total(amount_rmb, exchange_rate, member_level, extra_discount)
-                original_service_fee = calc_result["original_service_fee"]
-                vip_discount_rate = calc_result["vip_discount_rate"]
-                final_service_fee = calc_result["final_service_fee"]
-                total_twd = calc_result["total_twd"]
-
-            paid_amount = 0.0
-            unpaid_amount = total_twd
-            payment_status = "未付款"
-            reconcile_enabled = 1
-            order_status = "正常"
-
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO orders (
-                        order_time, customer_name, platform, tracking_number,
-                        amount_rmb, weight_kg, is_arrived, is_returned,
-                        service_fee, remarks,
-                        reconcile_enabled, exchange_rate, member_level_snapshot,
-                        original_service_fee, vip_discount_rate, final_service_fee,
-                        extra_discount, total_twd, paid_amount, unpaid_amount,
-                        payment_status, order_status
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        order_time,
-                        name_to_save,
-                        platform,
-                        tracking_number,
-                        float(amount_rmb),
-                        float(weight_kg),
-                        bool(is_arrived),
-                        bool(is_returned),
-                        float(final_service_fee),
-                        remarks,
-                        int(reconcile_enabled),
-                        float(exchange_rate),
-                        member_level,
-                        float(original_service_fee),
-                        float(vip_discount_rate),
-                        float(final_service_fee),
-                        float(extra_discount),
-                        float(total_twd),
-                        float(paid_amount),
-                        float(unpaid_amount),
-                        payment_status,
-                        order_status
-                    )
-                )
+            cursor.execute(
+                """
+                INSERT INTO orders 
+                  (order_time, customer_name, platform, tracking_number,
+                   amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (order_time, name_to_save, platform, tracking_number,
+                 float(amount_rmb), float(weight_kg), bool(is_arrived), bool(is_returned),
+                 float(service_fee), remarks)
+            )
             conn.commit()
 
             st.cache_data.clear()
 
+            # ✅ 依設定決定是否清空姓名
             if not st.session_state.get("keep_last_name", True):
                 st.session_state["clear_add_name"] = True
 
+            # ✅ 清空「其他欄位」（日期/平台保留）
             st.session_state["clear_add_fields"] = True
+
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
 
@@ -978,6 +778,37 @@ elif menu == "✏️ 編輯訂單":
             st.rerun()
 
 
+# 4. 搜尋訂單
+
+elif menu == "🔍 搜尋訂單":
+    st.subheader("🔍 搜尋訂單")
+
+    # 用文字框搜文字／數字／單號
+    kw_text = st.text_input("搜尋姓名/單號/金額/ID")
+    # 用日期選擇器搜日期
+    kw_date = st.date_input("搜尋下單日期", value=None)
+
+    # 組 SQL
+    query  = "SELECT * FROM orders WHERE 1=1"
+    params = []
+
+    if kw_text:
+        query += " AND (customer_name LIKE %s OR tracking_number LIKE %s)"
+        params += [f"%{kw_text}%", f"%{kw_text}%"]
+        try:
+            num = float(kw_text)
+            query += " OR order_id = %s OR amount_rmb = %s"
+            params += [int(num), num]
+        except ValueError:
+            pass
+
+    if kw_date:
+        query += " AND order_time = %s"
+        params.append(kw_date)
+
+    # 讀出結果
+    df = pd.read_sql(query, conn, params=params)
+    st.dataframe(format_order_df(df))
 
 
 # 5. 可出貨名單
@@ -1400,184 +1231,6 @@ elif menu == "📦 可出貨名單":
                         st.rerun()
                     except Exception as e:
                         st.error(f"發生錯誤：{e}")
-
-
-# 7. 對帳功能
-elif menu == "💳 對帳功能":
-    st.subheader("💳 對帳功能")
-
-    ensure_payments_table(conn)
-
-    tab1, tab2, tab3 = st.tabs(["➕ 登記收款", "📊 對帳總覽", "🧾 收款紀錄"])
-
-    # =========================
-    # Tab1：登記收款
-    # =========================
-    with tab1:
-        st.markdown("### ➕ 登記收款")
-
-        df_customers = pd.read_sql("SELECT DISTINCT customer_name FROM orders ORDER BY customer_name", conn)
-        customer_list = df_customers["customer_name"].dropna().tolist()
-
-        with st.form("add_payment_form"):
-            customer_name = st.selectbox("客戶姓名", customer_list if customer_list else [""])
-            payment_date = st.date_input("收款日期", value=datetime.today().date())
-            amount_twd = st.number_input("收款金額（台幣）", min_value=0.0, step=1.0)
-            method = st.selectbox("收款方式", ["匯款", "LINE Pay", "現金", "其他"])
-            note = st.text_area("備註")
-            submit_payment = st.form_submit_button("✅ 新增收款紀錄")
-
-        if submit_payment:
-            if not customer_name:
-                st.warning("請選擇客戶姓名")
-            elif amount_twd <= 0:
-                st.warning("收款金額需大於 0")
-            else:
-                cur = conn.cursor()
-                cur.execute("""
-                    INSERT INTO payments (
-                        customer_name, order_id, payment_date, payment_method, amount_twd, note, related_balance_type
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    customer_name,
-                    None,
-                    payment_date,
-                    method,
-                    amount_twd,
-                    note,
-                    None
-                ))
-                conn.commit()
-                cur.close()
-                st.success("✅ 收款紀錄新增成功")
-                st.rerun()
-
-    # =========================
-    # Tab2：對帳總覽
-    # =========================
-    with tab2:
-        st.markdown("### 📊 對帳總覽")
-
-        # 你如果 orders 裡面已有 final_price_twd / total_twd 之類欄位，可以改成直接抓那個
-        # 目前先用：amount_rmb * sell_rate + service_fee 來算應收
-        sell_rate = st.number_input("代購收費匯率", min_value=0.0, value=4.8, step=0.01)
-
-        df_orders = pd.read_sql("SELECT * FROM orders", conn)
-        df_payments = pd.read_sql("SELECT * FROM payments", conn)
-
-        if df_orders.empty:
-            st.info("目前沒有訂單資料")
-        else:
-            # 補空值
-            if "amount_rmb" not in df_orders.columns:
-                df_orders["amount_rmb"] = 0.0
-            if "service_fee" not in df_orders.columns:
-                df_orders["service_fee"] = 0.0
-            if "is_returned" not in df_orders.columns:
-                df_orders["is_returned"] = False
-
-            df_orders["amount_rmb"] = pd.to_numeric(df_orders["amount_rmb"], errors="coerce").fillna(0)
-            df_orders["service_fee"] = pd.to_numeric(df_orders["service_fee"], errors="coerce").fillna(0)
-
-            # 只統計「尚未已運回」或你想統計全部也可以改掉
-            # 若你想全部都算，直接刪掉下一行
-            df_calc = df_orders.copy()
-
-            # 應收金額（台幣）
-            df_calc["應收台幣"] = df_calc["amount_rmb"] * sell_rate + df_calc["service_fee"]
-
-            order_summary = (
-                df_calc.groupby("customer_name", dropna=False)
-                .agg(
-                    訂單筆數=("order_id", "count"),
-                    訂單總額=("應收台幣", "sum")
-                )
-                .reset_index()
-            )
-
-            if df_payments.empty:
-                payment_summary = pd.DataFrame(columns=["customer_name", "已收金額"])
-            else:
-                df_payments["amount_twd"] = pd.to_numeric(df_payments["amount_twd"], errors="coerce").fillna(0)
-                payment_summary = (
-                    df_payments.groupby("customer_name", dropna=False)
-                    .agg(已收金額=("amount_twd", "sum"))
-                    .reset_index()
-                )
-
-            df_recon = order_summary.merge(payment_summary, on="customer_name", how="left")
-            df_recon["已收金額"] = df_recon["已收金額"].fillna(0)
-            df_recon["未收金額"] = df_recon["訂單總額"] - df_recon["已收金額"]
-
-            def get_status(x):
-                if abs(x) < 1:
-                    return "✅ 已對帳"
-                elif x > 0:
-                    return "⚠️ 未收款"
-                else:
-                    return "🟦 溢收"
-
-            df_recon["對帳狀態"] = df_recon["未收金額"].apply(get_status)
-
-            only_unpaid = st.checkbox("只看未對帳完成", value=False)
-
-            if only_unpaid:
-                df_show = df_recon[df_recon["對帳狀態"] != "✅ 已對帳"].copy()
-            else:
-                df_show = df_recon.copy()
-
-            df_show = df_show.sort_values(by=["未收金額", "customer_name"], ascending=[False, True])
-
-            total_receivable = df_recon["訂單總額"].sum()
-            total_received = df_recon["已收金額"].sum()
-            total_unpaid = df_recon["未收金額"].sum()
-
-            c1, c2, c3 = st.columns(3)
-            c1.metric("應收總額", f"{total_receivable:,.0f} 元")
-            c2.metric("已收總額", f"{total_received:,.0f} 元")
-            c3.metric("未收總額", f"{total_unpaid:,.0f} 元")
-
-            st.dataframe(df_show, use_container_width=True)
-
-            # 匯出 Excel
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                df_show.to_excel(writer, index=False, sheet_name="對帳總覽")
-            output.seek(0)
-
-            st.download_button(
-                "📥 匯出對帳總覽 Excel",
-                data=output,
-                file_name=f"對帳總覽_{datetime.today().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-
-    # =========================
-    # Tab3：收款紀錄
-    # =========================
-    with tab3:
-        st.markdown("### 🧾 收款紀錄")
-
-        df_payments = pd.read_sql("SELECT * FROM payments ORDER BY payment_date DESC, payment_id DESC", conn)
-
-        if df_payments.empty:
-            st.info("目前沒有收款紀錄")
-        else:
-            keyword = st.text_input("搜尋客戶姓名")
-            if keyword:
-                df_payments = df_payments[df_payments["customer_name"].astype(str).str.contains(keyword, na=False)]
-
-            st.dataframe(df_payments, use_container_width=True)
-
-            delete_id = st.number_input("輸入要刪除的 payment_id", min_value=0, step=1)
-            if st.button("🗑️ 刪除這筆收款紀錄"):
-                cur = conn.cursor()
-                cur.execute("DELETE FROM payments WHERE payment_id = %s", (int(delete_id),))
-                conn.commit()
-                cur.close()
-                st.success("✅ 已刪除收款紀錄")
-                st.rerun()
 
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
@@ -2508,118 +2161,4 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
