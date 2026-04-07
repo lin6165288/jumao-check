@@ -1,4 +1,6 @@
 import streamlit as st
+st.set_page_config(page_title="橘貓代購系統", layout="wide")
+st.title("🐾 橘貓代購｜訂單管理系統")
 import mysql.connector
 import pandas as pd
 import time
@@ -439,33 +441,34 @@ conn = mysql.connector.connect(
     database=st.secrets["mysql"]["database"],
     charset="utf8mb4",
     connection_timeout=10,
+    autocommit=False,
 )
 
-cursor = conn.cursor()
-cursor.execute("SET time_zone = '+08:00'")
-cursor.close()
+with conn.cursor() as cur:
+    cur.execute("SET time_zone = '+08:00'")
 
-st.success("✅ DB connected")
-ensure_return_request_tables(conn)
-ensure_frontend_config_tables(conn)
-ensure_forwarding_register_table(conn)
-    
-#歷史名字搜尋
+if "schema_checked" not in st.session_state:
+    try:
+        ensure_return_request_tables(conn)
+        ensure_frontend_config_tables(conn)
+        ensure_forwarding_register_table(conn)
+        st.session_state["schema_checked"] = True
+    except Exception as e:
+        st.error(f"初始化資料表失敗：{e}")
+        st.stop()
 
 def get_customer_names(conn):
-    df = pd.read_sql("""
-        SELECT DISTINCT customer_name
-        FROM orders
-        WHERE customer_name IS NOT NULL AND customer_name <> ''
-        ORDER BY customer_name
-    """, conn)
-    return df["customer_name"].tolist()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT customer_name
+            FROM orders
+            WHERE customer_name IS NOT NULL AND customer_name <> ''
+            ORDER BY customer_name
+        """)
+        rows = cur.fetchall()
+    return [r[0] for r in rows if r and r[0]]
 
 
-cursor = conn.cursor(dictionary=True)
-
-st.set_page_config(page_title="橘貓代購系統", layout="wide")
-st.title("🐾 橘貓代購｜訂單管理系統")
 
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
@@ -630,17 +633,20 @@ elif menu == "🧾 新增訂單":
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
-            cursor.execute(
-                """
-                INSERT INTO orders 
-                  (order_time, customer_name, platform, tracking_number,
-                   amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """,
-                (order_time, name_to_save, platform, tracking_number,
-                 float(amount_rmb), float(weight_kg), bool(is_arrived), bool(is_returned),
-                 float(service_fee), remarks)
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO orders
+                      (order_time, customer_name, platform, tracking_number,
+                       amount_rmb, weight_kg, is_arrived, is_returned, service_fee, remarks)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    (
+                        order_time, name_to_save, platform, tracking_number,
+                        float(amount_rmb), float(weight_kg), bool(is_arrived), bool(is_returned),
+                        float(service_fee), remarks
+                    )
+                )
             conn.commit()
 
             st.cache_data.clear()
@@ -734,37 +740,38 @@ elif menu == "✏️ 編輯訂單":
 
         # ===== 保存更新 =====
         if save:
-            cursor.execute(
-                """
-                UPDATE orders SET
-                  order_time        = %s,
-                  customer_name     = %s,
-                  platform          = %s,
-                  tracking_number   = %s,
-                  amount_rmb        = %s,
-                  weight_kg         = %s,
-                  is_arrived        = %s,
-                  is_returned       = %s,
-                  is_early_returned = %s,
-                  service_fee       = %s,
-                  remarks           = %s
-                WHERE order_id      = %s
-                """,
-                (
-                    order_time,
-                    name,
-                    platform,
-                    tracking_number,
-                    float(amount_rmb),
-                    float(weight_kg),
-                    bool(is_arrived),
-                    bool(is_returned),
-                    bool(is_early_returned),
-                    float(service_fee),
-                    remarks,
-                    edit_id
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE orders SET
+                      order_time        = %s,
+                      customer_name     = %s,
+                      platform          = %s,
+                      tracking_number   = %s,
+                      amount_rmb        = %s,
+                      weight_kg         = %s,
+                      is_arrived        = %s,
+                      is_returned       = %s,
+                      is_early_returned = %s,
+                      service_fee       = %s,
+                      remarks           = %s
+                    WHERE order_id      = %s
+                    """,
+                    (
+                        order_time,
+                        name,
+                        platform,
+                        tracking_number,
+                        float(amount_rmb),
+                        float(weight_kg),
+                        bool(is_arrived),
+                        bool(is_returned),
+                        bool(is_early_returned),
+                        float(service_fee),
+                        remarks,
+                        edit_id
+                    )
                 )
-            )
             conn.commit()
             st.session_state["toast_updated"] = True
             st.rerun()
@@ -772,7 +779,8 @@ elif menu == "✏️ 編輯訂單":
         # ===== 刪除按鈕 =====
         confirm_del = st.checkbox("我確認要刪除這筆訂單")
         if st.button("🗑 刪除此訂單", disabled=not confirm_del):
-            cursor.execute("DELETE FROM orders WHERE order_id = %s", (edit_id,))
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM orders WHERE order_id = %s", (edit_id,))
             conn.commit()
             st.session_state["toast_deleted"] = True
             st.rerun()
@@ -908,7 +916,8 @@ elif menu == "📦 可出貨名單":
                 if st.button("⏰ 延後運回（勾選）", disabled=len(picked_ids) == 0, use_container_width=True):
                     try:
                         sql, params = add_delay_tag_sql(picked_ids)
-                        cursor.execute(sql, params)
+                        with conn.cursor() as cur:
+                            cur.execute(sql, params)
                         conn.commit()
                         st.success(f"已標記 {len(picked_ids)} 筆為【延後運回】。")
                         st.rerun()
@@ -919,7 +928,8 @@ elif menu == "📦 可出貨名單":
                 if st.button("🧹 取消延後（勾選）", disabled=len(picked_ids) == 0, use_container_width=True):
                     try:
                         sql2, params2 = remove_delay_tag_sql(picked_ids)
-                        cursor.execute(sql2, params2)
+                        with conn.cursor() as cur:
+                            cur.execute(sql2, params2)
                         conn.commit()
                         st.success(f"已移除 {len(picked_ids)} 筆的【延後】標記。")
                         st.rerun()
@@ -930,7 +940,8 @@ elif menu == "📦 可出貨名單":
                 if st.button("📣 標記已通知（勾選）", disabled=len(picked_ids) == 0, use_container_width=True):
                     try:
                         sql3, params3 = add_notify_tag_sql(picked_ids)
-                        cursor.execute(sql3, params3)
+                        with conn.cursor() as cur:
+                            cur.execute(sql3, params3)
                         conn.commit()
                         st.success(f"📣 已標記 {len(picked_ids)} 筆為【已通知】。")
                         st.rerun()
@@ -941,7 +952,8 @@ elif menu == "📦 可出貨名單":
                 if st.button("🧹 取消已通知（勾選）", disabled=len(picked_ids) == 0, use_container_width=True):
                     try:
                         sql4, params4 = remove_notify_tag_sql(picked_ids)
-                        cursor.execute(sql4, params4)
+                        with conn.cursor() as cur:
+                            cur.execute(sql4, params4)
                         conn.commit()
                         st.success(f"🧹 已移除 {len(picked_ids)} 筆的【已通知】標記。")
                         st.rerun()
@@ -1092,7 +1104,8 @@ elif menu == "📦 可出貨名單":
                         ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                         if ids:
                             sql, params = add_delay_tag_sql(ids)
-                            cursor.execute(sql, params)
+                            with conn.cursor() as cur:
+                                cur.execute(sql, params)
                             conn.commit()
                             st.success(f"已標記 {len(ids)} 筆訂單為【延後運回】。")
                             st.rerun()
@@ -1105,7 +1118,8 @@ elif menu == "📦 可出貨名單":
                         ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                         if ids:
                             sql2, params2 = remove_delay_tag_sql(ids)
-                            cursor.execute(sql2, params2)
+                            with conn.cursor() as cur:
+                                cur.execute(sql2, params2)
                             conn.commit()
                             st.success(f"已移除 {len(ids)} 筆的【延後】標記。")
                             st.rerun()
@@ -1118,7 +1132,8 @@ elif menu == "📦 可出貨名單":
                         ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                         if ids:
                             sql3, params3 = add_notify_tag_sql(ids)
-                            cursor.execute(sql3, params3)
+                            with conn.cursor() as cur:
+                                cur.execute(sql3, params3)
                             conn.commit()
                             st.success(f"📣 已標記 {len(ids)} 筆訂單為【已通知】。")
                             st.rerun()
@@ -1131,7 +1146,8 @@ elif menu == "📦 可出貨名單":
                         ids = df_calc[df_calc["customer_name"].isin(picked_names)]["order_id"].tolist()
                         if ids:
                             sql4, params4 = remove_notify_tag_sql(ids)
-                            cursor.execute(sql4, params4)
+                            with conn.cursor() as cur:
+                                cur.execute(sql4, params4)
                             conn.commit()
                             st.success(f"🧹 已移除 {len(ids)} 筆訂單的【已通知】標記。")
                             st.rerun()
