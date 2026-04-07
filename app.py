@@ -606,7 +606,7 @@ ensure_forwarding_register_table(conn)
 ensure_members_table(conn)
 ensure_member_balance_logs_table(conn)
 ensure_payments_table(conn)
-ensure_orders_reconcile_columns(conn)
+
     
 #歷史名字搜尋
 
