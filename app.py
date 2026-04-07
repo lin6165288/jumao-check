@@ -48,6 +48,22 @@ def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last
         cur.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
     conn.commit()
 
+def ensure_payments_table(conn):
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS payments (
+        payment_id INT AUTO_INCREMENT PRIMARY KEY,
+        customer_name VARCHAR(255) NOT NULL,
+        payment_date DATE NOT NULL,
+        amount_twd DECIMAL(10,2) NOT NULL DEFAULT 0,
+        method VARCHAR(50) DEFAULT '',
+        note TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    conn.commit()
+    cur.close()
+
 
 def ensure_forwarding_register_table(conn):
     ddl = """
@@ -449,6 +465,7 @@ st.success("✅ DB connected")
 ensure_return_request_tables(conn)
 ensure_frontend_config_tables(conn)
 ensure_forwarding_register_table(conn)
+ensure_payments_table(conn)
     
 #歷史名字搜尋
 
@@ -470,7 +487,7 @@ st.title("🐾 橘貓代購｜訂單管理系統")
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
-    "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息",
+    "📦 可出貨名單", "💳 對帳功能", "📥 貼上入庫訊息",
     "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價",
     "📢 前台公告管理", "📮 集運登記管理", "📮 匿名回饋管理"
 ])
@@ -778,37 +795,6 @@ elif menu == "✏️ 編輯訂單":
             st.rerun()
 
 
-# 4. 搜尋訂單
-
-elif menu == "🔍 搜尋訂單":
-    st.subheader("🔍 搜尋訂單")
-
-    # 用文字框搜文字／數字／單號
-    kw_text = st.text_input("搜尋姓名/單號/金額/ID")
-    # 用日期選擇器搜日期
-    kw_date = st.date_input("搜尋下單日期", value=None)
-
-    # 組 SQL
-    query  = "SELECT * FROM orders WHERE 1=1"
-    params = []
-
-    if kw_text:
-        query += " AND (customer_name LIKE %s OR tracking_number LIKE %s)"
-        params += [f"%{kw_text}%", f"%{kw_text}%"]
-        try:
-            num = float(kw_text)
-            query += " OR order_id = %s OR amount_rmb = %s"
-            params += [int(num), num]
-        except ValueError:
-            pass
-
-    if kw_date:
-        query += " AND order_time = %s"
-        params.append(kw_date)
-
-    # 讀出結果
-    df = pd.read_sql(query, conn, params=params)
-    st.dataframe(format_order_df(df))
 
 
 # 5. 可出貨名單
@@ -1231,6 +1217,174 @@ elif menu == "📦 可出貨名單":
                         st.rerun()
                     except Exception as e:
                         st.error(f"發生錯誤：{e}")
+
+
+# 7. 對帳功能
+elif menu == "💳 對帳功能":
+    st.subheader("💳 對帳功能")
+
+    ensure_payments_table(conn)
+
+    tab1, tab2, tab3 = st.tabs(["➕ 登記收款", "📊 對帳總覽", "🧾 收款紀錄"])
+
+    # =========================
+    # Tab1：登記收款
+    # =========================
+    with tab1:
+        st.markdown("### ➕ 登記收款")
+
+        df_customers = pd.read_sql("SELECT DISTINCT customer_name FROM orders ORDER BY customer_name", conn)
+        customer_list = df_customers["customer_name"].dropna().tolist()
+
+        with st.form("add_payment_form"):
+            customer_name = st.selectbox("客戶姓名", customer_list if customer_list else [""])
+            payment_date = st.date_input("收款日期", value=datetime.today().date())
+            amount_twd = st.number_input("收款金額（台幣）", min_value=0.0, step=1.0)
+            method = st.selectbox("收款方式", ["匯款", "LINE Pay", "現金", "其他"])
+            note = st.text_area("備註")
+            submit_payment = st.form_submit_button("✅ 新增收款紀錄")
+
+        if submit_payment:
+            if not customer_name:
+                st.warning("請選擇客戶姓名")
+            elif amount_twd <= 0:
+                st.warning("收款金額需大於 0")
+            else:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO payments (customer_name, payment_date, amount_twd, method, note)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (customer_name, payment_date, amount_twd, method, note))
+                conn.commit()
+                cur.close()
+                st.success("✅ 收款紀錄新增成功")
+                st.rerun()
+
+    # =========================
+    # Tab2：對帳總覽
+    # =========================
+    with tab2:
+        st.markdown("### 📊 對帳總覽")
+
+        # 你如果 orders 裡面已有 final_price_twd / total_twd 之類欄位，可以改成直接抓那個
+        # 目前先用：amount_rmb * sell_rate + service_fee 來算應收
+        sell_rate = st.number_input("代購收費匯率", min_value=0.0, value=4.8, step=0.01)
+
+        df_orders = pd.read_sql("SELECT * FROM orders", conn)
+        df_payments = pd.read_sql("SELECT * FROM payments", conn)
+
+        if df_orders.empty:
+            st.info("目前沒有訂單資料")
+        else:
+            # 補空值
+            if "amount_rmb" not in df_orders.columns:
+                df_orders["amount_rmb"] = 0.0
+            if "service_fee" not in df_orders.columns:
+                df_orders["service_fee"] = 0.0
+            if "is_returned" not in df_orders.columns:
+                df_orders["is_returned"] = False
+
+            df_orders["amount_rmb"] = pd.to_numeric(df_orders["amount_rmb"], errors="coerce").fillna(0)
+            df_orders["service_fee"] = pd.to_numeric(df_orders["service_fee"], errors="coerce").fillna(0)
+
+            # 只統計「尚未已運回」或你想統計全部也可以改掉
+            # 若你想全部都算，直接刪掉下一行
+            df_calc = df_orders.copy()
+
+            # 應收金額（台幣）
+            df_calc["應收台幣"] = df_calc["amount_rmb"] * sell_rate + df_calc["service_fee"]
+
+            order_summary = (
+                df_calc.groupby("customer_name", dropna=False)
+                .agg(
+                    訂單筆數=("order_id", "count"),
+                    訂單總額=("應收台幣", "sum")
+                )
+                .reset_index()
+            )
+
+            if df_payments.empty:
+                payment_summary = pd.DataFrame(columns=["customer_name", "已收金額"])
+            else:
+                df_payments["amount_twd"] = pd.to_numeric(df_payments["amount_twd"], errors="coerce").fillna(0)
+                payment_summary = (
+                    df_payments.groupby("customer_name", dropna=False)
+                    .agg(已收金額=("amount_twd", "sum"))
+                    .reset_index()
+                )
+
+            df_recon = order_summary.merge(payment_summary, on="customer_name", how="left")
+            df_recon["已收金額"] = df_recon["已收金額"].fillna(0)
+            df_recon["未收金額"] = df_recon["訂單總額"] - df_recon["已收金額"]
+
+            def get_status(x):
+                if abs(x) < 1:
+                    return "✅ 已對帳"
+                elif x > 0:
+                    return "⚠️ 未收款"
+                else:
+                    return "🟦 溢收"
+
+            df_recon["對帳狀態"] = df_recon["未收金額"].apply(get_status)
+
+            only_unpaid = st.checkbox("只看未對帳完成", value=False)
+
+            if only_unpaid:
+                df_show = df_recon[df_recon["對帳狀態"] != "✅ 已對帳"].copy()
+            else:
+                df_show = df_recon.copy()
+
+            df_show = df_show.sort_values(by=["未收金額", "customer_name"], ascending=[False, True])
+
+            total_receivable = df_recon["訂單總額"].sum()
+            total_received = df_recon["已收金額"].sum()
+            total_unpaid = df_recon["未收金額"].sum()
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("應收總額", f"{total_receivable:,.0f} 元")
+            c2.metric("已收總額", f"{total_received:,.0f} 元")
+            c3.metric("未收總額", f"{total_unpaid:,.0f} 元")
+
+            st.dataframe(df_show, use_container_width=True)
+
+            # 匯出 Excel
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df_show.to_excel(writer, index=False, sheet_name="對帳總覽")
+            output.seek(0)
+
+            st.download_button(
+                "📥 匯出對帳總覽 Excel",
+                data=output,
+                file_name=f"對帳總覽_{datetime.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # =========================
+    # Tab3：收款紀錄
+    # =========================
+    with tab3:
+        st.markdown("### 🧾 收款紀錄")
+
+        df_payments = pd.read_sql("SELECT * FROM payments ORDER BY payment_date DESC, payment_id DESC", conn)
+
+        if df_payments.empty:
+            st.info("目前沒有收款紀錄")
+        else:
+            keyword = st.text_input("搜尋客戶姓名")
+            if keyword:
+                df_payments = df_payments[df_payments["customer_name"].astype(str).str.contains(keyword, na=False)]
+
+            st.dataframe(df_payments, use_container_width=True)
+
+            delete_id = st.number_input("輸入要刪除的 payment_id", min_value=0, step=1)
+            if st.button("🗑️ 刪除這筆收款紀錄"):
+                cur = conn.cursor()
+                cur.execute("DELETE FROM payments WHERE payment_id = %s", (int(delete_id),))
+                conn.commit()
+                cur.close()
+                st.success("✅ 已刪除收款紀錄")
+                st.rerun()
 
 
 # ========== 📥 貼上入庫訊息 → 自動更新 ==========
