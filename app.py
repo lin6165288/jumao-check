@@ -199,21 +199,6 @@ def enqueue_failed(conn, tracking_number, weight_kg=None, raw_message=None, last
         cur.execute(sql, (tracking_number, weight_kg, raw_message, last_error))
     conn.commit()
 
-def ensure_payments_table(conn):
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS payments (
-        payment_id INT AUTO_INCREMENT PRIMARY KEY,
-        customer_name VARCHAR(255) NOT NULL,
-        payment_date DATE NOT NULL,
-        amount_twd DECIMAL(10,2) NOT NULL DEFAULT 0,
-        method VARCHAR(50) DEFAULT '',
-        note TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-    cur.close()
 
 
 def ensure_forwarding_register_table(conn):
@@ -1477,9 +1462,19 @@ elif menu == "💳 對帳功能":
             else:
                 cur = conn.cursor()
                 cur.execute("""
-                    INSERT INTO payments (customer_name, payment_date, amount_twd, method, note)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (customer_name, payment_date, amount_twd, method, note))
+                    INSERT INTO payments (
+                        customer_name, order_id, payment_date, payment_method, amount_twd, note, related_balance_type
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    customer_name,
+                    None,
+                    payment_date,
+                    method,
+                    amount_twd,
+                    note,
+                    None
+                ))
                 conn.commit()
                 cur.close()
                 st.success("✅ 收款紀錄新增成功")
