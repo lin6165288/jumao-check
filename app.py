@@ -611,13 +611,16 @@ ensure_payments_table(conn)
 #歷史名字搜尋
 
 def get_customer_names(conn):
-    df = pd.read_sql("""
+    cur = conn.cursor()
+    cur.execute("""
         SELECT DISTINCT customer_name
         FROM orders
         WHERE customer_name IS NOT NULL AND customer_name <> ''
         ORDER BY customer_name
-    """, conn)
-    return df["customer_name"].tolist()
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    return [r[0] for r in rows if r and r[0]]
 
 
 cursor = conn.cursor(dictionary=True)
@@ -711,7 +714,11 @@ elif menu == "🧾 新增訂單":
 
     quick_submit = st.sidebar.button("✅ 新增訂單", use_container_width=True)
 
-    name_options = get_customer_names(conn)
+    try:
+        name_options = get_customer_names(conn)
+    except Exception as e:
+        st.error(f"讀取客戶姓名失敗：{e}")
+        name_options = []
 
     with st.container(border=True):
         st.markdown("#### 客戶姓名")
@@ -781,7 +788,11 @@ elif menu == "🧾 新增訂單":
 
     # 即時預覽會員等級與收費
     preview_name = (st.session_state.get("add_name") or "").strip()
-    preview_level = get_member_level(conn, preview_name) if preview_name else "一般"
+    try:
+        preview_level = get_member_level(conn, preview_name) if preview_name else "一般"
+    except Exception as e:
+        st.warning(f"讀取會員等級失敗：{e}")
+        preview_level = "一般"
 
     if platform == "集運":
         original_service_fee = 0.0
