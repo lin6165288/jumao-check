@@ -1,4 +1,6 @@
 import streamlit as st
+st.set_page_config(page_title="橘貓代購系統", layout="wide")
+st.title("🐾 橘貓代購｜訂單管理系統")
 import mysql.connector
 import pandas as pd
 import time
@@ -620,8 +622,7 @@ def get_customer_names(conn):
 
 cursor = conn.cursor(dictionary=True)
 
-st.set_page_config(page_title="橘貓代購系統", layout="wide")
-st.title("🐾 橘貓代購｜訂單管理系統")
+
 
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
