@@ -23,6 +23,22 @@ def show_toast_once(key: str, msg: str, icon: str = "✅"):
         st.session_state[key] = False
 
 
+def ensure_order_payment_items_table(conn):
+    ddl = """
+    CREATE TABLE IF NOT EXISTS order_payment_items (
+      payment_item_id INT AUTO_INCREMENT PRIMARY KEY,
+      order_id INT NOT NULL,
+      customer_name VARCHAR(255) NOT NULL,
+      payment_method VARCHAR(50) NOT NULL,
+      amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+      note TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+    with conn.cursor() as cur:
+        cur.execute(ddl)
+    conn.commit()
+
 
 def ensure_order_payment_columns(conn):
     with conn.cursor() as cur:
@@ -645,7 +661,31 @@ if "schema_inited" not in st.session_state:
         ensure_member_deduction_table(conn)
         ensure_member_balance_logs_table(conn)
         ensure_order_payment_columns(conn)
+        ensure_order_payment_items_table(conn)
         sync_members_from_orders(conn)
+
+        # ===== 舊訂單付款狀態初始化（只跑一次）=====
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE orders
+                SET payment_status = '已付款',
+                    paid_amount = amount_twd,
+                    payment_method = '舊訂單預設已付款'
+                WHERE platform <> '集運'
+                  AND (payment_status IS NULL OR payment_status = '' OR payment_status = '未付款')
+            """)
+
+            cur.execute("""
+                UPDATE orders
+                SET amount_twd = 0,
+                    paid_amount = 0,
+                    payment_status = '不需付款',
+                    payment_method = '集運免付款',
+                    payment_note = '集運訂單不需付款'
+                WHERE platform = '集運'
+            """)
+        conn.commit()
+        
         st.session_state["schema_inited"] = True
     except Exception as e:
         st.error(f"初始化資料表失敗：{e}")
@@ -838,15 +878,25 @@ elif menu == "🧾 新增訂單":
             st.error("⚠️ 請輸入客戶姓名")
         else:
             sell_rate = get_current_exchange_rate(conn)
-            amount_twd = float(amount_rmb) * float(sell_rate) + float(service_fee)
+
+            if platform == "集運":
+                amount_twd = 0.0
+                payment_status_default = "不需付款"
+                payment_method_default = "集運免付款"
+                paid_amount_default = 0.0
+            else:
+                amount_twd = float(amount_rmb) * float(sell_rate) + float(service_fee)
+                payment_status_default = "未付款"
+                payment_method_default = None
+                paid_amount_default = 0.0
     
             cursor.execute(
                 """
                 INSERT INTO orders 
                   (order_time, customer_name, platform, tracking_number,
                    amount_rmb, amount_twd, weight_kg, is_arrived, is_returned,
-                   service_fee, remarks, payment_status, paid_amount)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   service_fee, remarks, payment_status, payment_method, paid_amount)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     order_time,
@@ -860,8 +910,9 @@ elif menu == "🧾 新增訂單":
                     bool(is_returned),
                     float(service_fee),
                     remarks,
-                    "未付款",
-                    0.0
+                    payment_status_default,
+                    payment_method_default,
+                    float(paid_amount_default)
                 )
             )
     
@@ -2327,6 +2378,7 @@ elif menu == "💳 訂單付款管理":
         if "members_synced" not in st.session_state:
             sync_members_from_orders(conn)
             st.session_state["members_synced"] = True
+        ensure_order_payment_items_table(conn)
     except Exception as e:
         st.error(f"訂單付款功能初始化失敗：{e}")
         st.stop()
@@ -2335,9 +2387,9 @@ elif menu == "💳 訂單付款管理":
     with c1:
         customer_kw = st.text_input("搜尋客戶姓名")
     with c2:
-        payment_filter = st.selectbox("付款狀態", ["全部", "未付款", "部分付款", "已付款"])
+        payment_filter = st.selectbox("付款狀態", ["全部", "未付款", "部分付款", "已付款", "不需付款"])
     with c3:
-        method_filter = st.selectbox("付款方式", ["全部", "餘額", "儲值扣款", "轉帳"])
+        platform_filter = st.selectbox("平台", ["全部", "集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東"])
 
     query = "SELECT * FROM orders WHERE 1=1"
     params = []
@@ -2350,9 +2402,9 @@ elif menu == "💳 訂單付款管理":
         query += " AND payment_status = %s"
         params.append(payment_filter)
 
-    if method_filter != "全部":
-        query += " AND payment_method = %s"
-        params.append(method_filter)
+    if platform_filter != "全部":
+        query += " AND platform = %s"
+        params.append(platform_filter)
 
     query += " ORDER BY order_time DESC, order_id DESC"
 
@@ -2371,6 +2423,7 @@ elif menu == "💳 訂單付款管理":
         picked_row = df_orders[df_orders["order_id"] == picked_order_id].iloc[0]
 
         customer_name = str(picked_row["customer_name"])
+        platform = str(picked_row["platform"])
         order_amount_twd = float(picked_row["amount_twd"] if pd.notna(picked_row["amount_twd"]) else 0)
         paid_amount_now = float(picked_row["paid_amount"] if pd.notna(picked_row["paid_amount"]) else 0)
         unpaid_amount = max(order_amount_twd - paid_amount_now, 0)
@@ -2378,10 +2431,33 @@ elif menu == "💳 訂單付款管理":
         st.markdown("### 📌 訂單付款資訊")
         st.write(f"**客戶姓名：** {customer_name}")
         st.write(f"**訂單編號：** {int(picked_order_id)}")
+        st.write(f"**平台：** {platform}")
         st.write(f"**應付款項（台幣）：** {order_amount_twd:.2f}")
         st.write(f"**已付款金額：** {paid_amount_now:.2f}")
         st.write(f"**未付金額：** {unpaid_amount:.2f}")
         st.write(f"**目前付款狀態：** {picked_row['payment_status']}")
+
+        if platform == "集運":
+            st.info("此訂單為集運訂單，不需付款。")
+            if picked_row["payment_status"] != "不需付款":
+                if st.button("✅ 標記為不需付款"):
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                UPDATE orders
+                                SET amount_twd = 0,
+                                    paid_amount = 0,
+                                    payment_status = '不需付款',
+                                    payment_method = '集運免付款',
+                                    payment_note = '集運訂單不需付款'
+                                WHERE order_id = %s
+                            """, (int(picked_order_id),))
+                        conn.commit()
+                        st.success("已標記為不需付款。")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"更新失敗：{e}")
+            st.stop()
 
         df_member = pd.read_sql("""
             SELECT *
@@ -2403,180 +2479,236 @@ elif menu == "💳 訂單付款管理":
             st.info(f"會員等級：{member_level}｜目前餘額：{member_balance:.2f}")
 
         with st.form("order_payment_form"):
-            payment_method = st.selectbox("付款方式", ["餘額", "儲值扣款", "轉帳"])
-            actual_paid_amount = st.number_input(
-                "本次收款金額（台幣）",
-                min_value=0.0,
-                value=float(unpaid_amount),
-                step=10.0
-            )
-            recharge_amount = st.number_input(
-                "若為『儲值扣款』，本次儲值金額（台幣）",
-                min_value=0.0,
-                value=0.0,
-                step=100.0
-            )
+            recharge_amount = st.number_input("本次儲值金額（台幣）", min_value=0.0, value=0.0, step=100.0)
+            balance_pay = st.number_input("本次餘額扣款（台幣）", min_value=0.0, value=0.0, step=10.0)
+            transfer_pay = st.number_input("本次轉帳金額（台幣）", min_value=0.0, value=0.0, step=10.0)
+            cod_pay = st.number_input("本次貨到付款金額（台幣）", min_value=0.0, value=0.0, step=10.0)
             payment_note = st.text_area("付款備註")
             submit_payment = st.form_submit_button("✅ 登記付款")
 
         if submit_payment:
-            if actual_paid_amount <= 0:
-                st.warning("請輸入大於 0 的收款金額。")
-            elif unpaid_amount <= 0:
-                st.warning("這筆訂單已無未付款金額。")
-            else:
-                try:
-                    actual_paid_amount = float(actual_paid_amount)
+            try:
+                recharge_amount = float(recharge_amount)
+                balance_pay = float(balance_pay)
+                transfer_pay = float(transfer_pay)
+                cod_pay = float(cod_pay)
 
-                    if actual_paid_amount > unpaid_amount:
-                        st.error("本次收款金額不可大於未付金額。")
-                        st.stop()
+                total_paid_this_time = balance_pay + transfer_pay + cod_pay
 
-                    balance_before = member_balance
-                    current_balance = member_balance
+                if total_paid_this_time <= 0 and recharge_amount <= 0:
+                    st.warning("請至少輸入一種付款或儲值金額。")
+                    st.stop()
 
-                    with conn.cursor() as cur:
-                        # ===== 付款方式：儲值扣款 =====
-                        if payment_method == "儲值扣款":
-                            if member_id is None:
-                                st.error("此客戶沒有會員資料，無法使用儲值扣款。")
-                                st.stop()
+                if total_paid_this_time > unpaid_amount:
+                    st.error("本次付款總額不可大於未付金額。")
+                    st.stop()
 
-                            if recharge_amount <= 0:
-                                st.error("請輸入儲值金額。")
-                                st.stop()
+                if (balance_pay > 0 or recharge_amount > 0) and member_id is None:
+                    st.error("此客戶沒有會員資料，無法使用餘額 / 儲值功能。")
+                    st.stop()
 
-                            recharge_amount = float(recharge_amount)
+                current_balance = member_balance
 
-                            if recharge_amount >= 10000:
-                                new_level = "VIP3"
-                            elif recharge_amount >= 5000:
-                                new_level = "VIP2"
-                            elif recharge_amount >= 3000:
-                                new_level = "VIP1"
-                            else:
-                                new_level = None
+                with conn.cursor() as cur:
+                    # ===== 儲值 =====
+                    if recharge_amount > 0:
+                        if recharge_amount >= 10000:
+                            new_level = "VIP3"
+                        elif recharge_amount >= 5000:
+                            new_level = "VIP2"
+                        elif recharge_amount >= 3000:
+                            new_level = "VIP1"
+                        else:
+                            new_level = None
 
-                            if new_level:
-                                cur.execute("""
-                                    UPDATE members
-                                    SET balance = balance + %s,
-                                        total_recharge = total_recharge + %s,
-                                        member_level = %s
-                                    WHERE member_id = %s
-                                """, (
-                                    recharge_amount,
-                                    recharge_amount,
-                                    new_level,
-                                    member_id
-                                ))
-                            else:
-                                cur.execute("""
-                                    UPDATE members
-                                    SET balance = balance + %s,
-                                        total_recharge = total_recharge + %s
-                                    WHERE member_id = %s
-                                """, (
-                                    recharge_amount,
-                                    recharge_amount,
-                                    member_id
-                                ))
-
-                            cur.execute("""
-                                INSERT INTO member_recharges
-                                (member_id, customer_name, amount, vip_level_after, note)
-                                VALUES (%s, %s, %s, %s, %s)
-                            """, (
-                                member_id,
-                                customer_name,
-                                recharge_amount,
-                                new_level if new_level else member_level,
-                                f"訂單#{int(picked_order_id)} 儲值扣款｜{payment_note}"
-                            ))
-
-                            log_member_balance_change(
-                                conn=conn,
-                                member_id=member_id,
-                                customer_name=customer_name,
-                                change_type="order_recharge",
-                                amount=recharge_amount,
-                                balance_before=current_balance,
-                                balance_after=current_balance + recharge_amount,
-                                note=f"訂單#{int(picked_order_id)}｜{payment_note}"
-                            )
-
-                            current_balance = current_balance + recharge_amount
-
-                        # ===== 付款方式：餘額 / 儲值扣款 =====
-                        if payment_method in ["餘額", "儲值扣款"]:
-                            if member_id is None:
-                                st.error("此客戶沒有會員資料，無法使用餘額相關付款方式。")
-                                st.stop()
-
-                            if current_balance < actual_paid_amount:
-                                st.error("會員餘額不足，無法扣款。")
-                                st.stop()
-
+                        if new_level:
                             cur.execute("""
                                 UPDATE members
-                                SET balance = balance - %s
+                                SET balance = balance + %s,
+                                    total_recharge = total_recharge + %s,
+                                    member_level = %s
                                 WHERE member_id = %s
                             """, (
-                                actual_paid_amount,
+                                recharge_amount,
+                                recharge_amount,
+                                new_level,
+                                member_id
+                            ))
+                        else:
+                            cur.execute("""
+                                UPDATE members
+                                SET balance = balance + %s,
+                                    total_recharge = total_recharge + %s
+                                WHERE member_id = %s
+                            """, (
+                                recharge_amount,
+                                recharge_amount,
                                 member_id
                             ))
 
-                            cur.execute("""
-                                INSERT INTO member_deductions
-                                (member_id, customer_name, amount, deduction_type, note)
-                                VALUES (%s, %s, %s, %s, %s)
-                            """, (
-                                member_id,
-                                customer_name,
-                                actual_paid_amount,
-                                "order_payment",
-                                f"訂單#{int(picked_order_id)}｜{payment_note}"
-                            ))
-
-                            log_member_balance_change(
-                                conn=conn,
-                                member_id=member_id,
-                                customer_name=customer_name,
-                                change_type="order_deduct",
-                                amount=-actual_paid_amount,
-                                balance_before=current_balance,
-                                balance_after=current_balance - actual_paid_amount,
-                                note=f"訂單#{int(picked_order_id)}｜{payment_note}"
-                            )
-
-                            current_balance = current_balance - actual_paid_amount
-
-                        # ===== 更新訂單付款資訊 =====
-                        new_paid_amount = paid_amount_now + actual_paid_amount
-                        new_payment_status = "已付款" if new_paid_amount >= order_amount_twd else "部分付款"
-
                         cur.execute("""
-                            UPDATE orders
-                            SET paid_amount = %s,
-                                payment_method = %s,
-                                payment_status = %s,
-                                paid_at = NOW(),
-                                payment_note = %s
-                            WHERE order_id = %s
+                            INSERT INTO member_recharges
+                            (member_id, customer_name, amount, vip_level_after, note)
+                            VALUES (%s, %s, %s, %s, %s)
                         """, (
-                            new_paid_amount,
-                            payment_method,
-                            new_payment_status,
-                            payment_note,
-                            int(picked_order_id)
+                            member_id,
+                            customer_name,
+                            recharge_amount,
+                            new_level if new_level else member_level,
+                            f"訂單#{int(picked_order_id)} 付款前儲值｜{payment_note}"
                         ))
 
-                    conn.commit()
-                    st.success("付款已成功登記。")
-                    st.rerun()
+                        log_member_balance_change(
+                            conn=conn,
+                            member_id=member_id,
+                            customer_name=customer_name,
+                            change_type="order_recharge",
+                            amount=recharge_amount,
+                            balance_before=current_balance,
+                            balance_after=current_balance + recharge_amount,
+                            note=f"訂單#{int(picked_order_id)}｜{payment_note}"
+                        )
 
-                except Exception as e:
-                    st.error(f"付款登記失敗：{e}")
+                        current_balance += recharge_amount
+
+                    # ===== 餘額扣款 =====
+                    if balance_pay > 0:
+                        if current_balance < balance_pay:
+                            st.error("會員餘額不足，無法扣款。")
+                            st.stop()
+
+                        cur.execute("""
+                            UPDATE members
+                            SET balance = balance - %s
+                            WHERE member_id = %s
+                        """, (
+                            balance_pay,
+                            member_id
+                        ))
+
+                        cur.execute("""
+                            INSERT INTO member_deductions
+                            (member_id, customer_name, amount, deduction_type, note)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            member_id,
+                            customer_name,
+                            balance_pay,
+                            "order_payment",
+                            f"訂單#{int(picked_order_id)}｜{payment_note}"
+                        ))
+
+                        log_member_balance_change(
+                            conn=conn,
+                            member_id=member_id,
+                            customer_name=customer_name,
+                            change_type="order_deduct",
+                            amount=-balance_pay,
+                            balance_before=current_balance,
+                            balance_after=current_balance - balance_pay,
+                            note=f"訂單#{int(picked_order_id)}｜{payment_note}"
+                        )
+
+                        current_balance -= balance_pay
+
+                    methods_used = []
+
+                    if balance_pay > 0:
+                        methods_used.append("餘額")
+                        cur.execute("""
+                            INSERT INTO order_payment_items
+                            (order_id, customer_name, payment_method, amount, note)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            int(picked_order_id),
+                            customer_name,
+                            "餘額",
+                            balance_pay,
+                            payment_note
+                        ))
+
+                    if transfer_pay > 0:
+                        methods_used.append("轉帳")
+                        cur.execute("""
+                            INSERT INTO order_payment_items
+                            (order_id, customer_name, payment_method, amount, note)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            int(picked_order_id),
+                            customer_name,
+                            "轉帳",
+                            transfer_pay,
+                            payment_note
+                        ))
+
+                    if cod_pay > 0:
+                        methods_used.append("貨到付款")
+                        cur.execute("""
+                            INSERT INTO order_payment_items
+                            (order_id, customer_name, payment_method, amount, note)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (
+                            int(picked_order_id),
+                            customer_name,
+                            "貨到付款",
+                            cod_pay,
+                            payment_note
+                        ))
+
+                    if recharge_amount > 0 and balance_pay > 0 and "儲值扣款" not in methods_used:
+                        methods_used.insert(0, "儲值扣款")
+
+                    method_summary = " + ".join(methods_used) if methods_used else picked_row["payment_method"]
+
+                    new_paid_amount = paid_amount_now + total_paid_this_time
+                    new_payment_status = "已付款" if new_paid_amount >= order_amount_twd else "部分付款"
+
+                    cur.execute("""
+                        UPDATE orders
+                        SET paid_amount = %s,
+                            payment_method = %s,
+                            payment_status = %s,
+                            paid_at = NOW(),
+                            payment_note = %s
+                        WHERE order_id = %s
+                    """, (
+                        new_paid_amount,
+                        method_summary,
+                        new_payment_status,
+                        payment_note,
+                        int(picked_order_id)
+                    ))
+
+                conn.commit()
+                st.success("付款已成功登記。")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"付款登記失敗：{e}")
+
+        st.markdown("### 🧾 此訂單付款明細")
+        try:
+            df_items = pd.read_sql("""
+                SELECT payment_item_id, payment_method, amount, note, created_at
+                FROM order_payment_items
+                WHERE order_id = %s
+                ORDER BY created_at DESC, payment_item_id DESC
+            """, conn, params=[int(picked_order_id)])
+
+            if df_items.empty:
+                st.caption("此訂單目前沒有付款明細。")
+            else:
+                df_items = df_items.rename(columns={
+                    "payment_item_id": "明細編號",
+                    "payment_method": "付款方式",
+                    "amount": "付款金額",
+                    "note": "備註",
+                    "created_at": "建立時間"
+                })
+                st.dataframe(df_items, use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"讀取付款明細失敗：{e}")
+
 
 # "前台公告管理":
 elif menu == "📢 前台公告管理":
