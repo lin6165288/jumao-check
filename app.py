@@ -2005,6 +2005,24 @@ elif menu == "👤 會員管理":
                     except Exception as e:
                         st.error(f"調整失敗：{e}")
 
+        st.markdown("### 📦 此會員訂單紀錄")
+
+        try:
+            df_orders = pd.read_sql("""
+                SELECT *
+                FROM orders
+                WHERE customer_name = %s
+                ORDER BY order_time DESC, order_id DESC
+            """, conn, params=[picked_row["customer_name"]])
+
+            if df_orders.empty:
+                st.caption("此會員目前沒有訂單紀錄。")
+            else:
+                st.dataframe(format_order_df(df_orders), use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"讀取會員訂單紀錄失敗：{e}")
+
+
 # "前台公告管理":
 elif menu == "📢 前台公告管理":
     st.subheader("📢 前台公告管理")
