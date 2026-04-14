@@ -635,16 +635,23 @@ cursor = conn.cursor()
 cursor.execute("SET time_zone = '+08:00'")
 cursor.close()
 
+if "schema_inited" not in st.session_state:
+    try:
+        ensure_return_request_tables(conn)
+        ensure_frontend_config_tables(conn)
+        ensure_forwarding_register_table(conn)
+        ensure_members_table(conn)
+        ensure_member_recharge_table(conn)
+        ensure_member_deduction_table(conn)
+        ensure_member_balance_logs_table(conn)
+        ensure_order_payment_columns(conn)
+        sync_members_from_orders(conn)
+        st.session_state["schema_inited"] = True
+    except Exception as e:
+        st.error(f"初始化資料表失敗：{e}")
+        st.stop()
+
 st.success("✅ DB connected")
-ensure_return_request_tables(conn)
-ensure_frontend_config_tables(conn)
-ensure_forwarding_register_table(conn)
-ensure_members_table(conn)
-ensure_member_recharge_table(conn)
-ensure_member_deduction_table(conn)
-ensure_member_balance_logs_table(conn)
-ensure_order_payment_columns(conn)
-sync_members_from_orders(conn)
 
 
 
@@ -1946,8 +1953,9 @@ elif menu == "👤 會員管理":
     st.subheader("👤 會員管理")
 
     try:
-        ensure_members_table(conn)
-        sync_members_from_orders(conn)
+        if "members_synced" not in st.session_state:
+            sync_members_from_orders(conn)
+            st.session_state["members_synced"] = True
     except Exception as e:
         st.error(f"會員資料初始化失敗：{e}")
 
@@ -2316,12 +2324,9 @@ elif menu == "💳 訂單付款管理":
     st.subheader("💳 訂單付款管理")
 
     try:
-        ensure_members_table(conn)
-        ensure_member_recharge_table(conn)
-        ensure_member_deduction_table(conn)
-        ensure_member_balance_logs_table(conn)
-        ensure_order_payment_columns(conn)
-        sync_members_from_orders(conn)
+        if "members_synced" not in st.session_state:
+            sync_members_from_orders(conn)
+            st.session_state["members_synced"] = True
     except Exception as e:
         st.error(f"訂單付款功能初始化失敗：{e}")
         st.stop()
