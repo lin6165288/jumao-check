@@ -873,17 +873,6 @@ elif menu == "🧾 新增訂單":
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
 
-            st.cache_data.clear()
-
-            # ✅ 依設定決定是否清空姓名
-            if not st.session_state.get("keep_last_name", True):
-                st.session_state["clear_add_name"] = True
-
-            # ✅ 清空「其他欄位」（日期/平台保留）
-            st.session_state["clear_add_fields"] = True
-
-            st.session_state["flash_toast"] = "✅ 訂單已新增！"
-            st.rerun()
 
 # 3. 編輯訂單
 elif menu == "✏️ 編輯訂單":
@@ -2340,7 +2329,7 @@ elif menu == "💳 訂單付款管理":
     with c1:
         customer_kw = st.text_input("搜尋客戶姓名")
     with c2:
-        payment_filter = st.selectbox("付款狀態", ["全部", "未付款", "已付款"])
+        payment_filter = st.selectbox("付款狀態", ["全部", "未付款", "部分付款", "已付款"])
     with c3:
         method_filter = st.selectbox("付款方式", ["全部", "餘額", "儲值扣款", "轉帳"])
 
