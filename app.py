@@ -2351,32 +2351,6 @@ elif menu == "👤 會員管理":
 
 elif menu == "💳 訂單付款管理":
     st.subheader("💳 訂單付款管理")
-    if st.button("🔧 一次性修正舊訂單付款狀態"):
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE orders
-                    SET payment_status = '已付款',
-                        paid_amount = amount_twd,
-                        payment_method = '舊訂單預設已付款'
-                    WHERE platform <> '集運'
-                      AND (payment_status IS NULL OR payment_status = '' OR payment_status = '未付款')
-                """)
-    
-                cur.execute("""
-                    UPDATE orders
-                    SET amount_twd = 0,
-                        paid_amount = 0,
-                        payment_status = '不需付款',
-                        payment_method = '集運免付款',
-                        payment_note = '集運訂單不需付款'
-                    WHERE platform = '集運'
-                """)
-            conn.commit()
-            st.success("舊訂單付款狀態已修正完成。")
-            st.rerun()
-        except Exception as e:
-            st.error(f"修正失敗：{e}")
 
     try:
         if "members_synced" not in st.session_state:
@@ -2387,7 +2361,8 @@ elif menu == "💳 訂單付款管理":
         st.error(f"訂單付款功能初始化失敗：{e}")
         st.stop()
 
-    c1, c2, c3 = st.columns(3)
+    # ===== 篩選區 =====
+    c1, c2, c3 = st.columns([1.4, 1, 1])
     with c1:
         customer_kw = st.text_input("搜尋客戶姓名")
     with c2:
@@ -2423,7 +2398,16 @@ elif menu == "💳 訂單付款管理":
     else:
         st.dataframe(format_order_df(df_orders), use_container_width=True, hide_index=True)
 
-        picked_order_id = st.selectbox("選擇要登記付款的訂單", df_orders["order_id"].tolist())
+        picked_order_id = st.selectbox(
+            "選擇要登記付款的訂單",
+            df_orders["order_id"].tolist(),
+            format_func=lambda x: (
+                f"訂單 #{x}｜"
+                f"{df_orders.loc[df_orders['order_id'] == x, 'customer_name'].iloc[0]}｜"
+                f"{df_orders.loc[df_orders['order_id'] == x, 'platform'].iloc[0]}"
+            )
+        )
+
         picked_row = df_orders[df_orders["order_id"] == picked_order_id].iloc[0]
 
         customer_name = str(picked_row["customer_name"])
@@ -2432,26 +2416,30 @@ elif menu == "💳 訂單付款管理":
         paid_amount_now = float(picked_row["paid_amount"] if pd.notna(picked_row["paid_amount"]) else 0)
         unpaid_amount = max(order_amount_twd - paid_amount_now, 0)
 
+        # ===== 訂單資訊 =====
         st.markdown("## 📌 訂單付款資訊")
-        
-        info1, info2, info3 = st.columns(3)
-        with info1:
-            st.metric("客戶姓名", customer_name)
-        with info2:
-            st.metric("訂單編號", int(picked_order_id))
-        with info3:
-            st.metric("平台", platform)
-        
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.metric("應付款項（台幣）", f"{order_amount_twd:.2f}")
-        with m2:
-            st.metric("已付款金額", f"{paid_amount_now:.2f}")
-        with m3:
-            st.metric("未付金額", f"{unpaid_amount:.2f}")
-        with m4:
-            st.metric("付款狀態", str(picked_row["payment_status"]))
 
+        r1c1, r1c2, r1c3 = st.columns(3)
+        with r1c1:
+            st.markdown(f"**客戶姓名**  \n{customer_name}")
+        with r1c2:
+            st.markdown(f"**訂單編號**  \n{int(picked_order_id)}")
+        with r1c3:
+            st.markdown(f"**平台**  \n{platform}")
+
+        r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+        with r2c1:
+            st.markdown(f"**應付款項（台幣）**  \n{order_amount_twd:.2f}")
+        with r2c2:
+            st.markdown(f"**已付款金額**  \n{paid_amount_now:.2f}")
+        with r2c3:
+            st.markdown(f"**未付金額**  \n{unpaid_amount:.2f}")
+        with r2c4:
+            st.markdown(f"**付款狀態**  \n{picked_row['payment_status']}")
+
+        st.divider()
+
+        # ===== 集運單直接免付款 =====
         if platform == "集運":
             st.info("此訂單為集運訂單，不需付款。")
             if picked_row["payment_status"] != "不需付款":
@@ -2474,6 +2462,7 @@ elif menu == "💳 訂單付款管理":
                         st.error(f"更新失敗：{e}")
             st.stop()
 
+        # ===== 會員資訊 =====
         df_member = pd.read_sql("""
             SELECT *
             FROM members
@@ -2491,29 +2480,33 @@ elif menu == "💳 訂單付款管理":
             member_id = int(member_row["member_id"])
             member_balance = float(member_row["balance"])
             member_level = str(member_row["member_level"])
+
             st.markdown("## 👤 會員資訊")
             mc1, mc2 = st.columns(2)
             with mc1:
-                st.metric("會員等級", member_level)
+                st.markdown(f"**會員等級**  \n{member_level}")
             with mc2:
-                st.metric("目前餘額", f"{member_balance:.2f}")
+                st.markdown(f"**目前餘額**  \n{member_balance:.2f}")
 
+        st.divider()
+
+        # ===== 登記付款 =====
         st.markdown("## 💰 登記付款")
 
         with st.form("order_payment_form"):
             p1, p2 = st.columns(2)
             with p1:
-                recharge_amount = st.number_input("本次儲值金額（台幣）", min_value=0.0, value=0.0, step=100.0)
-                balance_pay = st.number_input("本次餘額扣款（台幣）", min_value=0.0, value=0.0, step=10.0)
+                recharge_amount = st.number_input("儲值金額", min_value=0.0, value=0.0, step=100.0)
+                balance_pay = st.number_input("餘額扣款", min_value=0.0, value=0.0, step=10.0)
             with p2:
-                transfer_pay = st.number_input("本次轉帳金額（台幣）", min_value=0.0, value=0.0, step=10.0)
-                cod_pay = st.number_input("本次貨到付款金額（台幣）", min_value=0.0, value=0.0, step=10.0)
-        
+                transfer_pay = st.number_input("轉帳金額", min_value=0.0, value=0.0, step=10.0)
+                cod_pay = st.number_input("貨到付款", min_value=0.0, value=0.0, step=10.0)
+
             total_this_time = balance_pay + transfer_pay + cod_pay
             st.caption(f"本次付款合計：{total_this_time:.2f} 元")
-        
-            payment_note = st.text_area("付款備註", height=100)
-            submit_payment = st.form_submit_button("✅ 登記付款", use_container_width=True)
+
+            payment_note = st.text_area("付款備註", height=80)
+            submit_payment = st.form_submit_button("✅ 登記付款", use_container_width=False)
 
         if submit_payment:
             try:
@@ -2715,7 +2708,10 @@ elif menu == "💳 訂單付款管理":
             except Exception as e:
                 st.error(f"付款登記失敗：{e}")
 
-        st.markdown("### 🧾 此訂單付款明細")
+        st.divider()
+
+        # ===== 付款明細 =====
+        st.markdown("## 🧾 此訂單付款明細")
         try:
             df_items = pd.read_sql("""
                 SELECT payment_item_id, payment_method, amount, note, created_at
