@@ -1906,6 +1906,104 @@ elif menu == "👤 會員管理":
             except Exception as e:
                 st.error(f"更新失敗：{e}")
 
+        st.markdown("### 💰 儲值登記 / 餘額調整")
+
+        c3, c4 = st.columns(2)
+
+        with c3:
+            with st.form("member_recharge_form"):
+                recharge_amount = st.number_input("儲值金額", min_value=0.0, value=0.0, step=100.0)
+                recharge_note = st.text_input("儲值備註", value="")
+                submit_recharge = st.form_submit_button("➕ 登記儲值")
+
+            if submit_recharge:
+                if recharge_amount <= 0:
+                    st.warning("請輸入大於 0 的儲值金額。")
+                else:
+                    try:
+                        recharge_amount = float(recharge_amount)
+
+                        # 單次儲值決定 VIP 等級
+                        if recharge_amount >= 10000:
+                            new_level = "VIP3"
+                        elif recharge_amount >= 5000:
+                            new_level = "VIP2"
+                        elif recharge_amount >= 3000:
+                            new_level = "VIP1"
+                        else:
+                            new_level = None
+
+                        with conn.cursor() as cur:
+                            if new_level:
+                                cur.execute("""
+                                    UPDATE members
+                                    SET balance = balance + %s,
+                                        total_recharge = total_recharge + %s,
+                                        member_level = %s,
+                                        note = CONCAT(COALESCE(note,''), %s)
+                                    WHERE member_id = %s
+                                """, (
+                                    recharge_amount,
+                                    recharge_amount,
+                                    new_level,
+                                    f"\n[儲值] +{recharge_amount:.2f} 元 {recharge_note}｜自動升級 {new_level}",
+                                    int(picked_member_id)
+                                ))
+                            else:
+                                cur.execute("""
+                                    UPDATE members
+                                    SET balance = balance + %s,
+                                        total_recharge = total_recharge + %s,
+                                        note = CONCAT(COALESCE(note,''), %s)
+                                    WHERE member_id = %s
+                                """, (
+                                    recharge_amount,
+                                    recharge_amount,
+                                    f"\n[儲值] +{recharge_amount:.2f} 元 {recharge_note}",
+                                    int(picked_member_id)
+                                ))
+
+                        conn.commit()
+
+                        if new_level:
+                            st.success(f"儲值已完成，會員已自動升級為 {new_level}。")
+                        else:
+                            st.success("儲值已完成。")
+
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"儲值失敗：{e}")
+
+        with c4:
+            with st.form("member_balance_adjust_form"):
+                adjust_type = st.selectbox("調整類型", ["增加餘額", "扣除餘額"])
+                adjust_amount = st.number_input("調整金額", min_value=0.0, value=0.0, step=10.0)
+                adjust_note = st.text_input("調整備註", value="")
+                submit_adjust = st.form_submit_button("🛠 套用餘額調整")
+
+            if submit_adjust:
+                if adjust_amount <= 0:
+                    st.warning("請輸入大於 0 的金額。")
+                else:
+                    try:
+                        delta = float(adjust_amount) if adjust_type == "增加餘額" else -float(adjust_amount)
+
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                UPDATE members
+                                SET balance = balance + %s,
+                                    note = CONCAT(COALESCE(note,''), %s)
+                                WHERE member_id = %s
+                            """, (
+                                delta,
+                                f"\n[餘額調整] {delta:+.2f} 元 {adjust_note}",
+                                int(picked_member_id)
+                            ))
+                        conn.commit()
+                        st.success("餘額已調整。")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"調整失敗：{e}")
 
 # "前台公告管理":
 elif menu == "📢 前台公告管理":
