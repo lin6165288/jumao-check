@@ -10,6 +10,7 @@ import json, os
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from feedback_store import init_db, read_feedbacks, update_status
 
+st.set_page_config(page_title="橘貓代購系統", layout="wide")
 
 if "db_inited" not in st.session_state:
     init_db()
@@ -662,7 +663,7 @@ def get_customer_names(conn):
 
 cursor = conn.cursor(dictionary=True)
 
-st.set_page_config(page_title="橘貓代購系統", layout="wide")
+
 st.title("🐾 橘貓代購｜訂單管理系統")
 
 # ===== 側邊功能選單 =====
