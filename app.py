@@ -70,7 +70,75 @@ def ensure_members_table(conn):
 
     conn.commit()
 
+def ensure_member_recharge_table(conn):
+    ddl = """
+    CREATE TABLE IF NOT EXISTS member_recharges (
+      recharge_id INT AUTO_INCREMENT PRIMARY KEY,
+      member_id INT NOT NULL,
+      customer_name VARCHAR(255) NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      vip_level_after VARCHAR(50) NULL,
+      note TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+    with conn.cursor() as cur:
+        cur.execute(ddl)
+    conn.commit()
 
+
+def ensure_member_deduction_table(conn):
+    ddl = """
+    CREATE TABLE IF NOT EXISTS member_deductions (
+      deduction_id INT AUTO_INCREMENT PRIMARY KEY,
+      member_id INT NOT NULL,
+      customer_name VARCHAR(255) NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      deduction_type VARCHAR(50) NOT NULL DEFAULT 'manual',
+      note TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+    with conn.cursor() as cur:
+        cur.execute(ddl)
+    conn.commit()
+
+
+def ensure_member_balance_logs_table(conn):
+    ddl = """
+    CREATE TABLE IF NOT EXISTS member_balance_logs (
+      log_id INT AUTO_INCREMENT PRIMARY KEY,
+      member_id INT NOT NULL,
+      customer_name VARCHAR(255) NOT NULL,
+      change_type VARCHAR(50) NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      balance_before DECIMAL(10,2) NOT NULL DEFAULT 0,
+      balance_after DECIMAL(10,2) NOT NULL DEFAULT 0,
+      note TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    """
+    with conn.cursor() as cur:
+        cur.execute(ddl)
+    conn.commit()
+
+
+def log_member_balance_change(conn, member_id, customer_name, change_type, amount, balance_before, balance_after, note=""):
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO member_balance_logs
+            (member_id, customer_name, change_type, amount, balance_before, balance_after, note)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            int(member_id),
+            str(customer_name),
+            str(change_type),
+            float(amount),
+            float(balance_before),
+            float(balance_after),
+            note
+        ))
+    conn.commit()
 
 def sync_members_from_orders(conn):
     sql = """
@@ -514,6 +582,9 @@ ensure_return_request_tables(conn)
 ensure_frontend_config_tables(conn)
 ensure_forwarding_register_table(conn)
 ensure_members_table(conn)
+ensure_member_recharge_table(conn)
+ensure_member_deduction_table(conn)
+ensure_member_balance_logs_table(conn)
 sync_members_from_orders(conn)
     
 #歷史名字搜尋
@@ -1916,12 +1987,16 @@ elif menu == "👤 會員管理":
                 recharge_note = st.text_input("儲值備註", value="")
                 submit_recharge = st.form_submit_button("➕ 登記儲值")
 
+            
             if submit_recharge:
                 if recharge_amount <= 0:
                     st.warning("請輸入大於 0 的儲值金額。")
                 else:
                     try:
                         recharge_amount = float(recharge_amount)
+                        member_id = int(picked_member_id)
+                        customer_name = str(picked_row["customer_name"])
+                        balance_before = float(picked_row["balance"])
 
                         # 單次儲值決定 VIP 等級
                         if recharge_amount >= 10000:
@@ -1932,6 +2007,8 @@ elif menu == "👤 會員管理":
                             new_level = "VIP1"
                         else:
                             new_level = None
+
+                        balance_after = balance_before + recharge_amount
 
                         with conn.cursor() as cur:
                             if new_level:
@@ -1947,7 +2024,7 @@ elif menu == "👤 會員管理":
                                     recharge_amount,
                                     new_level,
                                     f"\n[儲值] +{recharge_amount:.2f} 元 {recharge_note}｜自動升級 {new_level}",
-                                    int(picked_member_id)
+                                    member_id
                                 ))
                             else:
                                 cur.execute("""
@@ -1960,10 +2037,35 @@ elif menu == "👤 會員管理":
                                     recharge_amount,
                                     recharge_amount,
                                     f"\n[儲值] +{recharge_amount:.2f} 元 {recharge_note}",
-                                    int(picked_member_id)
+                                    member_id
                                 ))
 
+                            # 儲值紀錄表
+                            cur.execute("""
+                                INSERT INTO member_recharges
+                                (member_id, customer_name, amount, vip_level_after, note)
+                                VALUES (%s, %s, %s, %s, %s)
+                            """, (
+                                member_id,
+                                customer_name,
+                                recharge_amount,
+                                new_level if new_level else picked_row["member_level"],
+                                recharge_note
+                            ))
+
                         conn.commit()
+
+                        # 餘額異動總表
+                        log_member_balance_change(
+                            conn=conn,
+                            member_id=member_id,
+                            customer_name=customer_name,
+                            change_type="recharge",
+                            amount=recharge_amount,
+                            balance_before=balance_before,
+                            balance_after=balance_after,
+                            note=recharge_note
+                        )
 
                         if new_level:
                             st.success(f"儲值已完成，會員已自動升級為 {new_level}。")
@@ -1986,7 +2088,12 @@ elif menu == "👤 會員管理":
                     st.warning("請輸入大於 0 的金額。")
                 else:
                     try:
+                        member_id = int(picked_member_id)
+                        customer_name = str(picked_row["customer_name"])
+                        balance_before = float(picked_row["balance"])
+
                         delta = float(adjust_amount) if adjust_type == "增加餘額" else -float(adjust_amount)
+                        balance_after = balance_before + delta
 
                         with conn.cursor() as cur:
                             cur.execute("""
@@ -1997,14 +2104,118 @@ elif menu == "👤 會員管理":
                             """, (
                                 delta,
                                 f"\n[餘額調整] {delta:+.2f} 元 {adjust_note}",
-                                int(picked_member_id)
+                                member_id
                             ))
+
+                            # 扣款紀錄表：只有扣除餘額才記
+                            if delta < 0:
+                                cur.execute("""
+                                    INSERT INTO member_deductions
+                                    (member_id, customer_name, amount, deduction_type, note)
+                                    VALUES (%s, %s, %s, %s, %s)
+                                """, (
+                                    member_id,
+                                    customer_name,
+                                    abs(delta),
+                                    "manual",
+                                    adjust_note
+                                ))
+
                         conn.commit()
+
+                        # 餘額異動總表
+                        log_member_balance_change(
+                            conn=conn,
+                            member_id=member_id,
+                            customer_name=customer_name,
+                            change_type="manual_add" if delta > 0 else "manual_deduct",
+                            amount=delta,
+                            balance_before=balance_before,
+                            balance_after=balance_after,
+                            note=adjust_note
+                        )
+
                         st.success("餘額已調整。")
                         st.rerun()
                     except Exception as e:
                         st.error(f"調整失敗：{e}")
 
+
+        st.markdown("### 🧾 會員異動紀錄")
+
+        tab_log1, tab_log2, tab_log3 = st.tabs(["儲值紀錄", "扣款紀錄", "餘額異動總表"])
+
+        with tab_log1:
+            try:
+                df_recharges = pd.read_sql("""
+                    SELECT recharge_id, customer_name, amount, vip_level_after, note, created_at
+                    FROM member_recharges
+                    WHERE member_id = %s
+                    ORDER BY created_at DESC, recharge_id DESC
+                """, conn, params=[int(picked_member_id)])
+                if df_recharges.empty:
+                    st.caption("目前沒有儲值紀錄。")
+                else:
+                    df_recharges = df_recharges.rename(columns={
+                        "recharge_id": "儲值編號",
+                        "customer_name": "客戶姓名",
+                        "amount": "儲值金額",
+                        "vip_level_after": "儲值後等級",
+                        "note": "備註",
+                        "created_at": "建立時間"
+                    })
+                    st.dataframe(df_recharges, use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"讀取儲值紀錄失敗：{e}")
+
+        with tab_log2:
+            try:
+                df_deductions = pd.read_sql("""
+                    SELECT deduction_id, customer_name, amount, deduction_type, note, created_at
+                    FROM member_deductions
+                    WHERE member_id = %s
+                    ORDER BY created_at DESC, deduction_id DESC
+                """, conn, params=[int(picked_member_id)])
+                if df_deductions.empty:
+                    st.caption("目前沒有扣款紀錄。")
+                else:
+                    df_deductions = df_deductions.rename(columns={
+                        "deduction_id": "扣款編號",
+                        "customer_name": "客戶姓名",
+                        "amount": "扣款金額",
+                        "deduction_type": "扣款類型",
+                        "note": "備註",
+                        "created_at": "建立時間"
+                    })
+                    st.dataframe(df_deductions, use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"讀取扣款紀錄失敗：{e}")
+
+        with tab_log3:
+            try:
+                df_logs = pd.read_sql("""
+                    SELECT log_id, customer_name, change_type, amount, balance_before, balance_after, note, created_at
+                    FROM member_balance_logs
+                    WHERE member_id = %s
+                    ORDER BY created_at DESC, log_id DESC
+                """, conn, params=[int(picked_member_id)])
+                if df_logs.empty:
+                    st.caption("目前沒有餘額異動紀錄。")
+                else:
+                    df_logs = df_logs.rename(columns={
+                        "log_id": "紀錄編號",
+                        "customer_name": "客戶姓名",
+                        "change_type": "異動類型",
+                        "amount": "異動金額",
+                        "balance_before": "異動前餘額",
+                        "balance_after": "異動後餘額",
+                        "note": "備註",
+                        "created_at": "建立時間"
+                    })
+                    st.dataframe(df_logs, use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"讀取餘額異動紀錄失敗：{e}")
+                
         st.markdown("### 📦 此會員訂單紀錄")
 
         try:
