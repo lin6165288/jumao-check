@@ -2432,14 +2432,25 @@ elif menu == "💳 訂單付款管理":
         paid_amount_now = float(picked_row["paid_amount"] if pd.notna(picked_row["paid_amount"]) else 0)
         unpaid_amount = max(order_amount_twd - paid_amount_now, 0)
 
-        st.markdown("### 📌 訂單付款資訊")
-        st.write(f"**客戶姓名：** {customer_name}")
-        st.write(f"**訂單編號：** {int(picked_order_id)}")
-        st.write(f"**平台：** {platform}")
-        st.write(f"**應付款項（台幣）：** {order_amount_twd:.2f}")
-        st.write(f"**已付款金額：** {paid_amount_now:.2f}")
-        st.write(f"**未付金額：** {unpaid_amount:.2f}")
-        st.write(f"**目前付款狀態：** {picked_row['payment_status']}")
+        st.markdown("## 📌 訂單付款資訊")
+        
+        info1, info2, info3 = st.columns(3)
+        with info1:
+            st.metric("客戶姓名", customer_name)
+        with info2:
+            st.metric("訂單編號", int(picked_order_id))
+        with info3:
+            st.metric("平台", platform)
+        
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("應付款項（台幣）", f"{order_amount_twd:.2f}")
+        with m2:
+            st.metric("已付款金額", f"{paid_amount_now:.2f}")
+        with m3:
+            st.metric("未付金額", f"{unpaid_amount:.2f}")
+        with m4:
+            st.metric("付款狀態", str(picked_row["payment_status"]))
 
         if platform == "集運":
             st.info("此訂單為集運訂單，不需付款。")
@@ -2480,15 +2491,29 @@ elif menu == "💳 訂單付款管理":
             member_id = int(member_row["member_id"])
             member_balance = float(member_row["balance"])
             member_level = str(member_row["member_level"])
-            st.info(f"會員等級：{member_level}｜目前餘額：{member_balance:.2f}")
+            st.markdown("## 👤 會員資訊")
+            mc1, mc2 = st.columns(2)
+            with mc1:
+                st.metric("會員等級", member_level)
+            with mc2:
+                st.metric("目前餘額", f"{member_balance:.2f}")
+
+        st.markdown("## 💰 登記付款")
 
         with st.form("order_payment_form"):
-            recharge_amount = st.number_input("本次儲值金額（台幣）", min_value=0.0, value=0.0, step=100.0)
-            balance_pay = st.number_input("本次餘額扣款（台幣）", min_value=0.0, value=0.0, step=10.0)
-            transfer_pay = st.number_input("本次轉帳金額（台幣）", min_value=0.0, value=0.0, step=10.0)
-            cod_pay = st.number_input("本次貨到付款金額（台幣）", min_value=0.0, value=0.0, step=10.0)
-            payment_note = st.text_area("付款備註")
-            submit_payment = st.form_submit_button("✅ 登記付款")
+            p1, p2 = st.columns(2)
+            with p1:
+                recharge_amount = st.number_input("本次儲值金額（台幣）", min_value=0.0, value=0.0, step=100.0)
+                balance_pay = st.number_input("本次餘額扣款（台幣）", min_value=0.0, value=0.0, step=10.0)
+            with p2:
+                transfer_pay = st.number_input("本次轉帳金額（台幣）", min_value=0.0, value=0.0, step=10.0)
+                cod_pay = st.number_input("本次貨到付款金額（台幣）", min_value=0.0, value=0.0, step=10.0)
+        
+            total_this_time = balance_pay + transfer_pay + cod_pay
+            st.caption(f"本次付款合計：{total_this_time:.2f} 元")
+        
+            payment_note = st.text_area("付款備註", height=100)
+            submit_payment = st.form_submit_button("✅ 登記付款", use_container_width=True)
 
         if submit_payment:
             try:
