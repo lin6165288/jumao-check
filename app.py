@@ -38,7 +38,6 @@ def ensure_members_table(conn):
     with conn.cursor() as cur:
         cur.execute(ddl)
 
-        # 舊資料表補欄位用
         try:
             cur.execute("ALTER TABLE members ADD COLUMN member_level VARCHAR(50) NOT NULL DEFAULT '一般會員'")
         except Exception:
@@ -56,6 +55,16 @@ def ensure_members_table(conn):
 
         try:
             cur.execute("ALTER TABLE members ADD COLUMN note TEXT NULL")
+        except Exception:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE members ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP")
+        except Exception:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE members ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
         except Exception:
             pass
 
@@ -1787,13 +1796,12 @@ elif menu == "💴 快速報價":
 elif menu == "👤 會員管理":
     st.subheader("👤 會員管理")
 
-    # 每次進來先同步訂單客戶名單
     try:
+        ensure_members_table(conn)
         sync_members_from_orders(conn)
     except Exception as e:
-        st.error(f"同步會員資料失敗：{e}")
+        st.error(f"會員資料初始化失敗：{e}")
 
-    # 搜尋 / 篩選
     c1, c2 = st.columns(2)
     with c1:
         kw = st.text_input("搜尋會員姓名")
@@ -1809,11 +1817,8 @@ elif menu == "👤 會員管理":
         m.total_recharge,
         m.note,
         m.created_at,
-        m.updated_at,
-        COUNT(o.order_id) AS order_count
+        m.updated_at
     FROM members m
-    LEFT JOIN orders o
-      ON m.customer_name = o.customer_name
     WHERE 1=1
     """
     params = []
@@ -1826,18 +1831,29 @@ elif menu == "👤 會員管理":
         query += " AND m.member_level = %s"
         params.append(level_filter)
 
-    query += """
-    GROUP BY
-        m.member_id, m.customer_name, m.member_level,
-        m.balance, m.total_recharge, m.note, m.created_at, m.updated_at
-    ORDER BY m.updated_at DESC, m.member_id DESC
-    """
+    query += " ORDER BY m.updated_at DESC, m.member_id DESC"
 
-    df_members = pd.read_sql(query, conn, params=params)
+    try:
+        df_members = pd.read_sql(query, conn, params=params)
+    except Exception as e:
+        st.error(f"讀取會員資料失敗：{e}")
+        st.stop()
 
     if df_members.empty:
         st.info("目前沒有會員資料。")
     else:
+        # 補訂單數
+        try:
+            df_order_count = pd.read_sql("""
+                SELECT customer_name, COUNT(*) AS order_count
+                FROM orders
+                GROUP BY customer_name
+            """, conn)
+            df_members = df_members.merge(df_order_count, on="customer_name", how="left")
+            df_members["order_count"] = df_members["order_count"].fillna(0).astype(int)
+        except Exception:
+            df_members["order_count"] = 0
+
         df_show = df_members.rename(columns={
             "member_id": "會員編號",
             "customer_name": "客戶姓名",
@@ -1889,84 +1905,6 @@ elif menu == "👤 會員管理":
                 st.rerun()
             except Exception as e:
                 st.error(f"更新失敗：{e}")
-
-        st.markdown("### 💰 儲值登記 / 餘額調整")
-
-        c3, c4 = st.columns(2)
-
-        with c3:
-            with st.form("member_recharge_form"):
-                recharge_amount = st.number_input("儲值金額", min_value=0.0, value=0.0, step=100.0)
-                recharge_note = st.text_input("儲值備註", value="")
-                submit_recharge = st.form_submit_button("➕ 登記儲值")
-
-            if submit_recharge:
-                if recharge_amount <= 0:
-                    st.warning("請輸入大於 0 的儲值金額。")
-                else:
-                    try:
-                        with conn.cursor() as cur:
-                            cur.execute("""
-                                UPDATE members
-                                SET balance = balance + %s,
-                                    total_recharge = total_recharge + %s,
-                                    note = CONCAT(COALESCE(note,''), %s)
-                                WHERE member_id = %s
-                            """, (
-                                float(recharge_amount),
-                                float(recharge_amount),
-                                f"\n[儲值] +{float(recharge_amount)} 元 {recharge_note}",
-                                int(picked_member_id)
-                            ))
-                        conn.commit()
-                        st.success("儲值已完成。")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"儲值失敗：{e}")
-
-        with c4:
-            with st.form("member_balance_adjust_form"):
-                adjust_type = st.selectbox("調整類型", ["增加餘額", "扣除餘額"])
-                adjust_amount = st.number_input("調整金額", min_value=0.0, value=0.0, step=10.0)
-                adjust_note = st.text_input("調整備註", value="")
-                submit_adjust = st.form_submit_button("🛠 套用餘額調整")
-
-            if submit_adjust:
-                if adjust_amount <= 0:
-                    st.warning("請輸入大於 0 的金額。")
-                else:
-                    try:
-                        delta = float(adjust_amount) if adjust_type == "增加餘額" else -float(adjust_amount)
-
-                        with conn.cursor() as cur:
-                            cur.execute("""
-                                UPDATE members
-                                SET balance = balance + %s,
-                                    note = CONCAT(COALESCE(note,''), %s)
-                                WHERE member_id = %s
-                            """, (
-                                delta,
-                                f"\n[餘額調整] {delta:+.2f} 元 {adjust_note}",
-                                int(picked_member_id)
-                            ))
-                        conn.commit()
-                        st.success("餘額已調整。")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"調整失敗：{e}")
-
-        st.markdown("### 📦 會員訂單紀錄")
-        df_orders = pd.read_sql("""
-            SELECT *
-            FROM orders
-            WHERE customer_name = %s
-            ORDER BY order_time DESC, order_id DESC
-        """, conn, params=[picked_row["customer_name"]])
-
-        if df_orders.empty:
-            st.caption("此會員目前沒有訂單。")
-        else:
-            st.dataframe(format_order_df(df_orders), use_container_width=True, hide_index=True)
 
 
 # "前台公告管理":
