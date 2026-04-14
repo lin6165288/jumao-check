@@ -664,28 +664,6 @@ if "schema_inited" not in st.session_state:
         ensure_order_payment_items_table(conn)
         sync_members_from_orders(conn)
 
-        # ===== 舊訂單付款狀態初始化（只跑一次）=====
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE orders
-                SET payment_status = '已付款',
-                    paid_amount = amount_twd,
-                    payment_method = '舊訂單預設已付款'
-                WHERE platform <> '集運'
-                  AND (payment_status IS NULL OR payment_status = '' OR payment_status = '未付款')
-            """)
-
-            cur.execute("""
-                UPDATE orders
-                SET amount_twd = 0,
-                    paid_amount = 0,
-                    payment_status = '不需付款',
-                    payment_method = '集運免付款',
-                    payment_note = '集運訂單不需付款'
-                WHERE platform = '集運'
-            """)
-        conn.commit()
-        
         st.session_state["schema_inited"] = True
     except Exception as e:
         st.error(f"初始化資料表失敗：{e}")
@@ -2373,6 +2351,32 @@ elif menu == "👤 會員管理":
 
 elif menu == "💳 訂單付款管理":
     st.subheader("💳 訂單付款管理")
+    if st.button("🔧 一次性修正舊訂單付款狀態"):
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE orders
+                    SET payment_status = '已付款',
+                        paid_amount = amount_twd,
+                        payment_method = '舊訂單預設已付款'
+                    WHERE platform <> '集運'
+                      AND (payment_status IS NULL OR payment_status = '' OR payment_status = '未付款')
+                """)
+    
+                cur.execute("""
+                    UPDATE orders
+                    SET amount_twd = 0,
+                        paid_amount = 0,
+                        payment_status = '不需付款',
+                        payment_method = '集運免付款',
+                        payment_note = '集運訂單不需付款'
+                    WHERE platform = '集運'
+                """)
+            conn.commit()
+            st.success("舊訂單付款狀態已修正完成。")
+            st.rerun()
+        except Exception as e:
+            st.error(f"修正失敗：{e}")
 
     try:
         if "members_synced" not in st.session_state:
