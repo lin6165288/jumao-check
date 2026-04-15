@@ -2494,7 +2494,7 @@ elif menu == "💳 訂單付款管理":
 
         customer_name = str(picked_row["customer_name"])
         platform = str(picked_row["platform"])
-        order_amount_twd = float(picked_row["amount_twd"] if pd.notna(picked_row["amount_twd"]) else 0)
+        order_amount_twd = round(float(picked_row["amount_twd"] if pd.notna(picked_row["amount_twd"]) else 0))
         paid_amount_now = float(picked_row["paid_amount"] if pd.notna(picked_row["paid_amount"]) else 0)
         unpaid_amount = max(order_amount_twd - paid_amount_now, 0)
 
@@ -2504,8 +2504,8 @@ elif menu == "💳 訂單付款管理":
             info_df = pd.DataFrame([
                 ["客戶姓名", customer_name, "訂單編號", int(picked_order_id)],
                 ["平台", platform, "付款狀態", str(picked_row["payment_status"])],
-                ["應付款項（台幣）", f"{order_amount_twd:.2f}", "已付款金額", f"{paid_amount_now:.2f}"],
-                ["未付金額", f"{unpaid_amount:.2f}", "付款方式", str(picked_row["payment_method"] or "—")],
+                ["應付款項（台幣）", f"{order_amount_twd:.0f}", "已付款金額", f"{paid_amount_now:.0f}"],
+                ["未付金額", f"{unpaid_amount:.0f}", "付款方式", str(picked_row["payment_method"] or "—")],
             ], columns=["欄位1", "內容1", "欄位2", "內容2"])
 
             st.dataframe(info_df, use_container_width=True, hide_index=True)
