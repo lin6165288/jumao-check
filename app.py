@@ -88,6 +88,54 @@ def get_current_exchange_rate(conn, default=4.78):
     except Exception:
         pass
     return float(default)
+
+
+def get_member_level(conn, customer_name: str) -> str:
+    try:
+        df_member = pd.read_sql("""
+            SELECT member_level
+            FROM members
+            WHERE customer_name = %s
+            LIMIT 1
+        """, conn, params=[customer_name])
+        if not df_member.empty and pd.notna(df_member.iloc[0]["member_level"]):
+            return str(df_member.iloc[0]["member_level"])
+    except Exception:
+        pass
+    return "一般會員"
+
+
+def calc_service_fee(amount_rmb: float, member_level: str, platform: str) -> float:
+    if platform == "集運":
+        return 0.0
+
+    amount_rmb = float(amount_rmb or 0)
+
+    # 基本手續費
+    # 1~499 => 30
+    # 500~999 => 50
+    # 1000~1499 => 100
+    # 1500~1999 => 150
+    # 之後每多 500 +50
+    if amount_rmb <= 0:
+        base_fee = 30
+    elif amount_rmb < 500:
+        base_fee = 30
+    else:
+        base_fee = int(amount_rmb // 500) * 50
+
+    discount_map = {
+        "一般會員": 1.00,
+        "VIP1": 0.90,
+        "VIP2": 0.85,
+        "VIP3": 0.80
+    }
+    discount = discount_map.get(member_level, 1.00)
+
+    # 直接四捨五入成整數台幣
+    return float(round(base_fee * discount))
+
+
         
 def ensure_members_table(conn):
     ddl = """
@@ -724,26 +772,30 @@ if menu == "📋 訂單總表":
 
 
 # 2. 新增訂單
-# 2. 新增訂單
 elif menu == "🧾 新增訂單":
     st.subheader("🧾 新增訂單")
 
-    # ✅ 進頁面先顯示「上一輪」存的 toast（避免被 rerun 吃掉）
     if st.session_state.get("flash_toast"):
         st.toast(st.session_state["flash_toast"])
         st.session_state["flash_toast"] = None
 
     st.session_state.setdefault("add_platform", "集運")
 
-    def sync_service_fee_by_platform():
-        if st.session_state.get("add_platform") == "集運":
-            st.session_state["add_service_fee"] = 0.0
-        else:
-            st.session_state["add_service_fee"] = 30.0
+    def sync_service_fee():
+        platform_now = st.session_state.get("add_platform", "集運")
+        amount_now = float(st.session_state.get("add_amount_rmb", 0.0) or 0.0)
+        name_now = (st.session_state.get("add_name") or "").strip()
 
-    default_fee = 0.0 if st.session_state["add_platform"] == "集運" else 30.0
+        member_level = get_member_level(conn, name_now) if name_now else "一般會員"
+        st.session_state["add_service_fee"] = calc_service_fee(amount_now, member_level, platform_now)
 
-    # ✅ 第一次進來時，初始化表單欄位
+    # 第一次進來先算預設手續費
+    default_fee = calc_service_fee(
+        float(st.session_state.get("add_amount_rmb", 0.0) or 0.0),
+        get_member_level(conn, (st.session_state.get("add_name") or "").strip()) if (st.session_state.get("add_name") or "").strip() else "一般會員",
+        st.session_state["add_platform"]
+    )
+
     defaults = {
         "add_tracking_number": "",
         "add_amount_rmb": 0.0,
@@ -758,32 +810,35 @@ elif menu == "🧾 新增訂單":
 
     st.session_state.setdefault("add_order_time", datetime.today().date())
 
-    # ✅ 若上一輪要求清空姓名
     if st.session_state.get("clear_add_name"):
         st.session_state["add_name"] = ""
         st.session_state["clear_add_name"] = False
 
-    # ✅ 若上一輪要求清空「其他欄位」（日期/平台除外）
     if st.session_state.get("clear_add_fields"):
         st.session_state["add_tracking_number"] = ""
         st.session_state["add_amount_rmb"] = 0.0
-        st.session_state["add_service_fee"] = 0.0 if st.session_state.get("add_platform", "集運") == "集運" else 30.0
+
+        name_now = (st.session_state.get("add_name") or "").strip()
+        member_level = get_member_level(conn, name_now) if name_now else "一般會員"
+        st.session_state["add_service_fee"] = calc_service_fee(
+            float(st.session_state.get("add_amount_rmb", 0.0) or 0.0),
+            member_level,
+            st.session_state.get("add_platform", "集運")
+        )
+
         st.session_state["add_weight_kg"] = 0.0
         st.session_state["add_is_arrived"] = False
         st.session_state["add_is_returned"] = False
         st.session_state["add_remarks"] = ""
         st.session_state["clear_add_fields"] = False
 
-    # ✅ 左側固定快捷新增（不用滑到底）
     quick_submit = st.sidebar.button("✅ 新增訂單", use_container_width=True)
 
     name_options = get_customer_names(conn)
 
-    # 讓姓名/建議看起來是同一組
     with st.container(border=True):
         st.markdown("#### 客戶姓名")
 
-        # ✅ 是否保留上一筆姓名（預設 True）
         st.session_state.setdefault("keep_last_name", True)
 
         c1, c2 = st.columns([3, 1])
@@ -798,7 +853,8 @@ elif menu == "🧾 新增訂單":
             "輸入姓名",
             key="add_name",
             label_visibility="collapsed",
-            placeholder="請輸入客戶名稱"
+            placeholder="請輸入客戶名稱",
+            on_change=sync_service_fee
         )
 
         q = (st.session_state.get("add_name") or "").strip().lower()
@@ -810,6 +866,12 @@ elif menu == "🧾 新增訂單":
 
                 def _pick(n):
                     st.session_state["add_name"] = n
+                    member_level = get_member_level(conn, n)
+                    st.session_state["add_service_fee"] = calc_service_fee(
+                        float(st.session_state.get("add_amount_rmb", 0.0) or 0.0),
+                        member_level,
+                        st.session_state.get("add_platform", "集運")
+                    )
 
                 for i, s in enumerate(suggestions):
                     cols[i % len(cols)].button(
@@ -822,20 +884,32 @@ elif menu == "🧾 新增訂單":
         else:
             st.caption("請輸入任一字母/文字")
 
-    # ✅ 不用 form：欄位即時寫入 session_state，側欄按鈕才拿得到最新值
     order_time = st.date_input("下單日期", key="add_order_time")
 
     platform = st.selectbox(
         "下單平台",
         ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東"],
         key="add_platform",
-        on_change=sync_service_fee_by_platform
+        on_change=sync_service_fee
     )
 
     tracking_number = st.text_input("包裹單號", key="add_tracking_number")
-    amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, step=1.0, key="add_amount_rmb")
+
+    amount_rmb = st.number_input(
+        "訂單金額（人民幣）",
+        min_value=0.0,
+        step=1.0,
+        key="add_amount_rmb",
+        on_change=sync_service_fee
+    )
+
     service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, step=10.0, key="add_service_fee")
     weight_kg = st.number_input("包裹公斤數", min_value=0.0, step=0.1, key="add_weight_kg")
+
+    # 顯示目前會員等級與手續費說明
+    current_name = (st.session_state.get("add_name") or "").strip()
+    current_level = get_member_level(conn, current_name) if current_name else "一般會員"
+    st.caption(f"目前會員等級：{current_level}｜目前自動計算手續費：NT$ {float(st.session_state.get('add_service_fee', 0)):.0f}")
 
     cA, cB = st.columns(2)
     with cA:
@@ -846,15 +920,17 @@ elif menu == "🧾 新增訂單":
     with st.expander("備註（可選）", expanded=False):
         remarks = st.text_area("備註", key="add_remarks")
 
-    # ✅ 主畫面也保留一顆按鈕（不想用側欄也能按）
     submit_main = st.button("✅ 新增訂單", use_container_width=True)
 
-    # ✅ 兩顆按鈕都能新增
     if quick_submit or submit_main:
         name_to_save = (st.session_state.get("add_name") or "").strip()
         if not name_to_save:
             st.error("⚠️ 請輸入客戶姓名")
         else:
+            # 送出前再重新算一次，避免手動漏更新
+            member_level = get_member_level(conn, name_to_save)
+            final_service_fee = calc_service_fee(float(amount_rmb), member_level, platform)
+
             sell_rate = get_current_exchange_rate(conn)
 
             if platform == "集運":
@@ -863,11 +939,11 @@ elif menu == "🧾 新增訂單":
                 payment_method_default = "集運免付款"
                 paid_amount_default = 0.0
             else:
-                amount_twd = float(amount_rmb) * float(sell_rate) + float(service_fee)
+                amount_twd = float(amount_rmb) * float(sell_rate) + float(final_service_fee)
                 payment_status_default = "未付款"
                 payment_method_default = None
                 paid_amount_default = 0.0
-    
+
             cursor.execute(
                 """
                 INSERT INTO orders 
@@ -886,26 +962,26 @@ elif menu == "🧾 新增訂單":
                     float(weight_kg),
                     bool(is_arrived),
                     bool(is_returned),
-                    float(service_fee),
+                    float(final_service_fee),
                     remarks,
                     payment_status_default,
                     payment_method_default,
                     float(paid_amount_default)
                 )
             )
-    
+
             cursor.execute("""
                 INSERT IGNORE INTO members (customer_name)
                 VALUES (%s)
             """, (name_to_save,))
-    
+
             conn.commit()
-    
+
             st.cache_data.clear()
-    
+
             if not st.session_state.get("keep_last_name", True):
                 st.session_state["clear_add_name"] = True
-    
+
             st.session_state["clear_add_fields"] = True
             st.session_state["flash_toast"] = "✅ 訂單已新增！"
             st.rerun()
@@ -2958,13 +3034,17 @@ elif menu == "📮 集運登記管理":
                                     platform,
                                     tracking_number,
                                     amount_rmb,
+                                    amount_twd,
                                     weight_kg,
                                     is_arrived,
                                     is_returned,
                                     service_fee,
-                                    remarks
+                                    remarks,
+                                    payment_status,
+                                    payment_method,
+                                    paid_amount
                                 )
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 """,
                                 (
                                     datetime.today().date(),
@@ -2973,10 +3053,14 @@ elif menu == "📮 集運登記管理":
                                     tracking_number,
                                     amount_rmb,
                                     0.0,
+                                    0.0,
                                     0,
                                     0,
                                     0.0,
-                                    auto_remarks
+                                    auto_remarks,
+                                    "不需付款",
+                                    "集運免付款",
+                                    0.0
                                 )
                             )
         
