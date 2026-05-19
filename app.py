@@ -2806,6 +2806,40 @@ elif menu == "💳 訂單付款管理":
 # "前台公告管理":
 elif menu == "📢 前台公告管理":
     st.subheader("📢 前台公告管理")
+        # ===== 前台訂單資料更新時間 =====
+    st.markdown("### 🕒 訂單資料更新時間")
+
+    df_update_time = pd.read_sql("""
+        SELECT setting_value
+        FROM site_settings
+        WHERE setting_key = 'orders_last_update_time'
+        LIMIT 1
+    """, conn)
+
+    if df_update_time.empty:
+        st.caption("目前尚未設定訂單資料更新時間。")
+    else:
+        st.info(f"目前前台顯示：{df_update_time.iloc[0]['setting_value']}")
+
+    if st.button("✅ 更新前台訂單資料時間", use_container_width=True):
+        try:
+            now_str = datetime.now().strftime("%Y/%m/%d %H:%M")
+
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO site_settings (setting_key, setting_value)
+                    VALUES ('orders_last_update_time', %s)
+                    ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                """, (now_str,))
+
+            conn.commit()
+            st.success(f"已更新前台訂單資料時間：{now_str}")
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"更新失敗：{e}")
+
+    st.divider()
 
     # ===== 讀取目前匯率 =====
     df_rate = pd.read_sql(
