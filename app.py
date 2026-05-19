@@ -2,7 +2,7 @@ import streamlit as st
 import mysql.connector
 import pandas as pd
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import io
 import re
 import math
@@ -2823,7 +2823,8 @@ elif menu == "📢 前台公告管理":
 
     if st.button("✅ 更新前台訂單資料時間", use_container_width=True):
         try:
-            now_str = datetime.now().strftime("%Y/%m/%d %H:%M")
+            taiwan_tz = timezone(timedelta(hours=8))
+            now_str = datetime.now(taiwan_tz).strftime("%Y/%m/%d %H:%M")
 
             with conn.cursor() as cur:
                 cur.execute("""
