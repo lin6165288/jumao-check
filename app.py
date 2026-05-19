@@ -775,17 +775,14 @@ if menu == "📋 訂單總表":
 elif menu == "🧾 新增訂單":
     if st.button("新增 updated_at 欄位"):
         try:
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                ALTER TABLE orders
-                ADD COLUMN updated_at DATETIME
-                DEFAULT CURRENT_TIMESTAMP
-                ON UPDATE CURRENT_TIMESTAMP
-            """)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    ALTER TABLE orders
+                    ADD COLUMN updated_at DATETIME
+                    DEFAULT CURRENT_TIMESTAMP
+                    ON UPDATE CURRENT_TIMESTAMP
+                """)
             conn.commit()
-            cursor.close()
-            conn.close()
             st.success("updated_at 欄位新增成功")
         except Exception as e:
             st.error(f"新增失敗：{e}")
