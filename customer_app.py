@@ -24,34 +24,33 @@ def get_connection():
         connection_timeout=10,
     )
 
-# ===== 訂單查詢頁 =====
-def get_last_update_time():
+#時間更新
+def get_orders_last_update_time():
     try:
         conn = get_connection()
         sql = """
-            SELECT MAX(order_time) AS last_update
-            FROM orders
+            SELECT setting_value
+            FROM site_settings
+            WHERE setting_key = 'orders_last_update_time'
+            LIMIT 1
         """
         df = pd.read_sql(sql, conn)
         conn.close()
 
-        last_update = df.loc[0, "last_update"]
+        if df.empty or pd.isna(df.loc[0, "setting_value"]):
+            return "尚未更新"
 
-        if pd.isna(last_update):
-            return "目前尚無訂單資料"
-
-        return pd.to_datetime(last_update).strftime("%Y/%m/%d")
+        return str(df.loc[0, "setting_value"])
 
     except Exception:
         return "讀取失敗"
 
-
-
+# ===== 訂單查詢頁 =====
 def page_orders():
     st.title("🧡 橘貓代購｜訂單查詢系統")
     
-    last_update_time = get_last_update_time()
-    st.caption(f"🕒 資料目前更新至：{last_update_time}")
+    last_update_time = get_orders_last_update_time()
+    st.caption(f"🕒 訂單資料上次更新時間：{last_update_time}")
 
     name = st.text_input("請輸入登記包裹用名稱(默認LINE名稱)", key="q_name")
     only_incomplete = st.checkbox("只看未完成訂單（未運回）", value=False, key="q_only_incomplete")
