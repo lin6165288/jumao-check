@@ -760,7 +760,7 @@ if menu == "📋 訂單總表":
     with col2:
         returned_filter = st.selectbox("是否已運回", ["全部", "是", "否"])
     with col3:
-        platform_filter = st.selectbox("平台", ["全部", "集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東"])
+        platform_filter = st.selectbox("平台", ["全部", "集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東", "得物"])
     if arrived_filter != "全部":
         df = df[df["is_arrived"] == (arrived_filter == "是")]
     if returned_filter != "全部":
@@ -889,7 +889,7 @@ elif menu == "🧾 新增訂單":
 
     platform = st.selectbox(
         "下單平台",
-        ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東"],
+        ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東", "得物"],
         key="add_platform",
         on_change=sync_service_fee
     )
