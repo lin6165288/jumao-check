@@ -49,7 +49,7 @@ def get_orders_last_update_time():
 
 #
 
-LIFF_ID = "你的LIFF_ID"
+LIFF_ID = "2010286756-yeXtJpY6"
 
 components.html(f"""
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
