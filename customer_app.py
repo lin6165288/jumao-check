@@ -54,28 +54,47 @@ LIFF_ID = "2010286756-yeXtJpY6"
 components.html(f"""
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<div id="profile">載入 LINE 資料中...</div>
+<div id="profile">載入中...</div>
 
 <script>
 async function main() {{
-  await liff.init({{ liffId: "{LIFF_ID}" }});
 
-  if (!liff.isLoggedIn()) {{
-    liff.login();
-    return;
+  try {{
+
+    document.getElementById("profile").innerHTML =
+      "開始初始化";
+
+    await liff.init({{
+      liffId: "{LIFF_ID}"
+    }});
+
+    document.getElementById("profile").innerHTML =
+      "初始化成功";
+
+    if (!liff.isLoggedIn()) {{
+      document.getElementById("profile").innerHTML =
+        "尚未登入";
+      return;
+    }}
+
+    const profile = await liff.getProfile();
+
+    document.getElementById("profile").innerHTML =
+      profile.displayName;
+
+  }}
+  catch(err) {{
+
+    document.getElementById("profile").innerHTML =
+      "錯誤：" + err;
+
   }}
 
-  const profile = await liff.getProfile();
-
-  document.getElementById("profile").innerHTML =
-    "LINE名稱：" + profile.displayName + "<br>" +
-    "LINE userId：" + profile.userId;
 }}
 
 main();
 </script>
 """, height=300)
-
 
 
 
