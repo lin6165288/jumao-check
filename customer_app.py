@@ -54,36 +54,49 @@ LIFF_ID = "2010286756-yeXtJpY6"
 components.html(f"""
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<div id="profile">載入中...</div>
+<div id="profile" style="font-size:16px; padding:12px;">
+  載入 LINE 資料中...
+</div>
 
 <script>
 async function main() {{
+  const box = document.getElementById("profile");
 
-  try {
-    
-        document.getElementById("profile").innerHTML =
-          "開始初始化";
-    
-        await liff.init({
-          liffId: "2010286756-yeXtJpY6"
-        });
-    
-        document.getElementById("profile").innerHTML =
-          "初始化成功";
-    
-    }
-    catch(err){
-    
-        document.getElementById("profile").innerHTML =
-          "錯誤：" + JSON.stringify(err);
-    
-    }
+  try {{
+    box.innerHTML = "開始初始化...";
 
+    await liff.init({{
+      liffId: "{LIFF_ID}",
+      withLoginOnExternalBrowser: true
+    }});
+
+    box.innerHTML = "初始化成功，檢查登入狀態...";
+
+    if (!liff.isLoggedIn()) {{
+      box.innerHTML = "尚未登入 LINE，正在跳轉登入...";
+      liff.login();
+      return;
+    }}
+
+    const profile = await liff.getProfile();
+
+    box.innerHTML =
+      "<b>LINE 綁定測試成功</b><br><br>" +
+      "LINE 名稱：" + profile.displayName + "<br>" +
+      "LINE userId：" + profile.userId + "<br>" +
+      "頭貼網址：" + profile.pictureUrl;
+
+  }} catch (err) {{
+    box.innerHTML =
+      "<b>LIFF 發生錯誤</b><br><br>" +
+      "錯誤內容：<br>" +
+      JSON.stringify(err, Object.getOwnPropertyNames(err));
+  }}
 }}
 
 main();
 </script>
-""", height=300)
+""", height=350)
 
 
 
