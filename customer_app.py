@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import mysql.connector
 from mysql.connector import Error
+import streamlit.components.v1 as components
 
 # 🔸 匿名回饋（MySQL 小表）
 from feedback_store import init_db, insert_feedback
