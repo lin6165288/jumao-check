@@ -45,7 +45,43 @@ def get_orders_last_update_time():
     except Exception:
         return "讀取失敗"
 
+
+#
+
+LIFF_ID = "你的LIFF_ID"
+
+components.html(f"""
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<div id="profile">載入 LINE 資料中...</div>
+
+<script>
+async function main() {{
+  await liff.init({{ liffId: "{LIFF_ID}" }});
+
+  if (!liff.isLoggedIn()) {{
+    liff.login();
+    return;
+  }}
+
+  const profile = await liff.getProfile();
+
+  document.getElementById("profile").innerHTML =
+    "LINE名稱：" + profile.displayName + "<br>" +
+    "LINE userId：" + profile.userId;
+}}
+
+main();
+</script>
+""", height=300)
+
+
+
+
+
+
 # ===== 訂單查詢頁 =====
+
 def page_orders():
     st.title("🧡 橘貓代購｜訂單查詢系統")
     
