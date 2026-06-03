@@ -59,36 +59,25 @@ components.html(f"""
 <script>
 async function main() {{
 
-  try {{
-
-    document.getElementById("profile").innerHTML =
-      "開始初始化";
-
-    await liff.init({{
-      liffId: "{LIFF_ID}"
-    }});
-
-    document.getElementById("profile").innerHTML =
-      "初始化成功";
-
-    if (!liff.isLoggedIn()) {{
-      document.getElementById("profile").innerHTML =
-        "尚未登入";
-      return;
-    }}
-
-    const profile = await liff.getProfile();
-
-    document.getElementById("profile").innerHTML =
-      profile.displayName;
-
-  }}
-  catch(err) {{
-
-    document.getElementById("profile").innerHTML =
-      "錯誤：" + err;
-
-  }}
+  try {
+    
+        document.getElementById("profile").innerHTML =
+          "開始初始化";
+    
+        await liff.init({
+          liffId: "2010286756-yeXtJpY6"
+        });
+    
+        document.getElementById("profile").innerHTML =
+          "初始化成功";
+    
+    }
+    catch(err){
+    
+        document.getElementById("profile").innerHTML =
+          "錯誤：" + JSON.stringify(err);
+    
+    }
 
 }}
 
