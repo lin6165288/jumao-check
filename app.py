@@ -184,6 +184,17 @@ def ensure_members_table(conn):
         except Exception:
             pass
 
+        # LINE 會員綁定欄位
+        try:
+            cur.execute("ALTER TABLE members ADD COLUMN line_user_id VARCHAR(100) NULL")
+        except Exception:
+            pass
+
+        try:
+            cur.execute("ALTER TABLE members ADD COLUMN line_name VARCHAR(100) NULL")
+        except Exception:
+            pass
+
     conn.commit()
 
 def ensure_member_recharge_table(conn):
@@ -734,10 +745,100 @@ def get_customer_names(conn):
     return df["customer_name"].tolist()
 
 
+def load_dashboard_stats(conn):
+    """讀取後台首頁營運儀表板統計資料。"""
+    stats = {
+        "total_members": 0,
+        "line_bound": 0,
+        "binding_rate": 0.0,
+        "month_orders": 0,
+        "month_service_fee": 0.0,
+        "ready_count": 0,
+        "ready_weight": 0.0,
+    }
+
+    try:
+        df = pd.read_sql("""
+            SELECT
+                COUNT(*) AS total_members,
+                SUM(
+                    CASE
+                        WHEN line_user_id IS NOT NULL AND TRIM(line_user_id) <> ''
+                        THEN 1 ELSE 0
+                    END
+                ) AS line_bound
+            FROM members
+        """, conn)
+
+        if not df.empty:
+            stats["total_members"] = int(df.loc[0, "total_members"] or 0)
+            stats["line_bound"] = int(df.loc[0, "line_bound"] or 0)
+            if stats["total_members"] > 0:
+                stats["binding_rate"] = stats["line_bound"] / stats["total_members"] * 100
+    except Exception:
+        pass
+
+    try:
+        df = pd.read_sql("""
+            SELECT
+                COUNT(*) AS month_orders,
+                COALESCE(SUM(service_fee), 0) AS month_service_fee
+            FROM orders
+            WHERE YEAR(order_time) = YEAR(CURDATE())
+              AND MONTH(order_time) = MONTH(CURDATE())
+        """, conn)
+
+        if not df.empty:
+            stats["month_orders"] = int(df.loc[0, "month_orders"] or 0)
+            stats["month_service_fee"] = float(df.loc[0, "month_service_fee"] or 0)
+    except Exception:
+        pass
+
+    try:
+        df = pd.read_sql("""
+            SELECT
+                COUNT(*) AS ready_count,
+                COALESCE(SUM(weight_kg), 0) AS ready_weight
+            FROM orders
+            WHERE is_arrived = 1
+              AND (is_returned = 0 OR is_returned IS NULL)
+        """, conn)
+
+        if not df.empty:
+            stats["ready_count"] = int(df.loc[0, "ready_count"] or 0)
+            stats["ready_weight"] = float(df.loc[0, "ready_weight"] or 0)
+    except Exception:
+        pass
+
+    return stats
+
+
+def render_dashboard_cards(conn):
+    """後台首頁 KPI 卡片。"""
+    stats = load_dashboard_stats(conn)
+
+    st.markdown("### 📊 營運儀表板")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("👥 會員總數", f"{stats['total_members']:,}")
+    c2.metric("🔗 LINE已綁定", f"{stats['line_bound']:,}")
+    c3.metric("📈 綁定率", f"{stats['binding_rate']:.1f}%")
+
+    c4, c5, c6 = st.columns(3)
+    c4.metric("📦 本月訂單", f"{stats['month_orders']:,}")
+    c5.metric("💰 本月手續費收入", f"NT$ {stats['month_service_fee']:,.0f}")
+    c6.metric("🚚 可運回包裹", f"{stats['ready_count']:,} 件", f"{stats['ready_weight']:.2f} kg")
+
+    st.caption("可運回包裹＝已到貨且尚未運回的訂單；本月手續費收入僅統計 service_fee。")
+    st.divider()
+
+
 cursor = conn.cursor(dictionary=True)
 
 
 st.title("🐾 橘貓代購｜訂單管理系統")
+
+render_dashboard_cards(conn)
 
 # ===== 側邊功能選單 =====
 menu = st.sidebar.selectbox("功能選單", [
