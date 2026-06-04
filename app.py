@@ -752,7 +752,6 @@ def load_dashboard_stats(conn):
         "line_bound": 0,
         "binding_rate": 0.0,
         "month_orders": 0,
-        "month_service_fee": 0.0,
         "ready_count": 0,
         "ready_weight": 0.0,
     }
@@ -780,9 +779,7 @@ def load_dashboard_stats(conn):
 
     try:
         df = pd.read_sql("""
-            SELECT
-                COUNT(*) AS month_orders,
-                COALESCE(SUM(service_fee), 0) AS month_service_fee
+            SELECT COUNT(*) AS month_orders
             FROM orders
             WHERE YEAR(order_time) = YEAR(CURDATE())
               AND MONTH(order_time) = MONTH(CURDATE())
@@ -790,7 +787,6 @@ def load_dashboard_stats(conn):
 
         if not df.empty:
             stats["month_orders"] = int(df.loc[0, "month_orders"] or 0)
-            stats["month_service_fee"] = float(df.loc[0, "month_service_fee"] or 0)
     except Exception:
         pass
 
@@ -824,12 +820,11 @@ def render_dashboard_cards(conn):
     c2.metric("🔗 LINE已綁定", f"{stats['line_bound']:,}")
     c3.metric("📈 綁定率", f"{stats['binding_rate']:.1f}%")
 
-    c4, c5, c6 = st.columns(3)
+    c4, c5 = st.columns(2)
     c4.metric("📦 本月訂單", f"{stats['month_orders']:,}")
-    c5.metric("💰 本月手續費收入", f"NT$ {stats['month_service_fee']:,.0f}")
-    c6.metric("🚚 可運回包裹", f"{stats['ready_count']:,} 件", f"{stats['ready_weight']:.2f} kg")
+    c5.metric("🚚 可運回包裹", f"{stats['ready_count']:,} 件", f"{stats['ready_weight']:.2f} kg")
 
-    st.caption("可運回包裹＝已到貨且尚未運回的訂單；本月手續費收入僅統計 service_fee。")
+    st.caption("可運回包裹＝已到貨且尚未運回的訂單。")
     st.divider()
 
 
