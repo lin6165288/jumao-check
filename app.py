@@ -824,7 +824,6 @@ def render_dashboard_cards(conn):
     c4.metric("📦 本月訂單", f"{stats['month_orders']:,}")
     c5.metric("🚚 可運回包裹", f"{stats['ready_count']:,} 件", f"{stats['ready_weight']:.2f} kg")
 
-    st.caption("可運回包裹＝已到貨且尚未運回的訂單。")
     st.divider()
 
 
