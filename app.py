@@ -645,6 +645,7 @@ def load_dashboard_stats(conn):
             FROM orders
             WHERE YEAR(order_time) = YEAR(CURDATE())
               AND MONTH(order_time) = MONTH(CURDATE())
+              AND platform <> '集運'
         """, conn)
 
         if not df.empty:
