@@ -959,120 +959,176 @@ elif menu == "✏️ 編輯訂單":
     show_toast_once("toast_updated", "訂單已更新！", icon="✅")
     show_toast_once("toast_deleted", "訂單已刪除！", icon="🗑")
 
+    st.caption("為避免一次載入全部訂單，預設只顯示最近 100 筆；輸入條件後可精準搜尋。")
 
-    # —— 四個獨立搜尋欄位 + 日期篩選 —— 
-    id_search       = st.text_input("🔢 搜索訂單編號")
-    name_search     = st.text_input("👤 搜索客戶姓名")
-    amount_search   = st.text_input("💰 搜索訂單金額（人民幣）")
-    tracking_search = st.text_input("📦 搜索包裹單號")
-    date_search     = st.date_input("📅 搜索下單日期", value=None)
-    returned_filter = st.selectbox("📦 是否已運回", ["全部", "✔ 已運回", "✘ 未運回"])
+    # —— 搜尋條件 ——
+    c1, c2 = st.columns(2)
+    with c1:
+        id_search = st.text_input("🔢 搜尋訂單編號")
+        name_search = st.text_input("👤 搜尋客戶姓名")
+        amount_search = st.text_input("💰 搜尋訂單金額（人民幣）")
+    with c2:
+        tracking_search = st.text_input("📦 搜尋包裹單號")
+        date_search = st.date_input("📅 搜尋下單日期", value=None)
+        returned_filter = st.selectbox("📦 是否已運回", ["全部", "✔ 已運回", "✘ 未運回"])
 
-
-    # 動態組 SQL
-    query  = "SELECT * FROM orders WHERE 1=1"
+    query = """
+        SELECT
+            order_id,
+            order_time,
+            customer_name,
+            platform,
+            tracking_number,
+            amount_rmb,
+            service_fee,
+            weight_kg,
+            is_arrived,
+            is_returned,
+            is_early_returned,
+            remarks
+        FROM orders
+        WHERE 1=1
+    """
     params = []
+    input_error = None
 
-    if id_search:
-        query += " AND order_id = %s"
-        params.append(int(id_search))
-    if name_search:
+    if id_search.strip():
+        try:
+            query += " AND order_id = %s"
+            params.append(int(id_search.strip()))
+        except ValueError:
+            input_error = "訂單編號只能輸入整數。"
+
+    if name_search.strip():
         query += " AND customer_name LIKE %s"
-        params.append(f"%{name_search}%")
-    if amount_search:
-        query += " AND amount_rmb = %s"
-        params.append(float(amount_search))
-    if tracking_search:
+        params.append(f"%{name_search.strip()}%")
+
+    if amount_search.strip():
+        try:
+            query += " AND amount_rmb = %s"
+            params.append(float(amount_search.strip()))
+        except ValueError:
+            input_error = "訂單金額只能輸入數字。"
+
+    if tracking_search.strip():
         query += " AND tracking_number LIKE %s"
-        params.append(f"%{tracking_search}%")
+        params.append(f"%{tracking_search.strip()}%")
+
     if date_search:
-        query += " AND order_time = %s"
+        query += " AND DATE(order_time) = %s"
         params.append(date_search)
+
     if returned_filter == "✔ 已運回":
         query += " AND is_returned = 1"
     elif returned_filter == "✘ 未運回":
-        query += " AND is_returned = 0"
+        query += " AND (is_returned = 0 OR is_returned IS NULL)"
 
+    query += " ORDER BY order_id DESC LIMIT 100"
 
-    # 執行查詢
-    df_raw = read_sql_df(query, conn, params=params)
+    if input_error:
+        st.warning(input_error)
+        df_raw = pd.DataFrame()
+    else:
+        try:
+            df_raw = read_sql_df(query, conn, params=params)
+        except Exception as e:
+            st.error(f"讀取訂單失敗：{e}")
+            df_raw = pd.DataFrame()
 
     if df_raw.empty:
-        st.warning("⚠️ 查無任何訂單")
+        st.info("目前沒有符合條件的訂單。")
     else:
-        # 顯示格式化後的表格
         df_show = format_order_df(df_raw.copy())
-        st.dataframe(df_show)
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
 
-        # 選擇要編輯的訂單編號
-        edit_id = st.selectbox("選擇訂單編號", df_raw["order_id"].tolist())
-        rec     = df_raw[df_raw["order_id"] == edit_id].iloc[0]
+        edit_id = st.selectbox(
+            "選擇訂單編號",
+            df_raw["order_id"].astype(int).tolist(),
+            format_func=lambda x: f"訂單 #{x}",
+        )
+        rec = df_raw.loc[df_raw["order_id"].astype(int) == int(edit_id)].iloc[0]
 
-        # ===== 編輯表單 =====
+        platforms = ["集運", "拼多多", "淘寶", "閒魚", "1688", "微店", "小紅書", "抖音", "京東", "得物"]
+        current_platform = str(rec.get("platform") or "集運")
+        platform_index = platforms.index(current_platform) if current_platform in platforms else 0
+
+        raw_order_time = pd.to_datetime(rec.get("order_time"), errors="coerce")
+        default_order_date = raw_order_time.date() if pd.notna(raw_order_time) else datetime.today().date()
+
+        amount_value = pd.to_numeric(pd.Series([rec.get("amount_rmb")]), errors="coerce").fillna(0).iloc[0]
+        service_fee_value = pd.to_numeric(pd.Series([rec.get("service_fee")]), errors="coerce").fillna(0).iloc[0]
+        weight_value = pd.to_numeric(pd.Series([rec.get("weight_kg")]), errors="coerce").fillna(0).iloc[0]
+
         with st.form("edit_form"):
-            order_time        = st.date_input("下單日期",     rec["order_time"])
-            name              = st.text_input("客戶姓名",   rec["customer_name"])
-            platform          = st.selectbox(
-                                   "平台",
-                                   ["集運","拼多多","淘寶","閒魚","1688","微店","小紅書", "抖音", "京東", "得物"],
-                                   index=["集運","拼多多","淘寶","閒魚","1688","微店","小紅書", "抖音", "京東", "得物"]
-                                         .index(rec["platform"])
-                                )
-            tracking_number   = st.text_input("包裹單號",    rec["tracking_number"])
-            amount_rmb        = st.number_input("訂單金額（人民幣）", value=float(rec["amount_rmb"]))
-            service_fee       = st.number_input("代購手續費（NT$）",   value=float(rec["service_fee"]))
-            weight_val = rec["weight_kg"] if rec["weight_kg"] is not None else 0.0
-            weight_kg  = st.number_input("包裹公斤數", value=float(weight_val))
-            is_arrived        = st.checkbox("已到貨",               value=bool(rec["is_arrived"]))
-            is_returned       = st.checkbox("已運回",               value=bool(rec["is_returned"]))
-            is_early_returned = st.checkbox("提前運回",             value=bool(rec.get("is_early_returned", False)))
-            remarks           = st.text_area("備註",               rec["remarks"] or "")
-            save              = st.form_submit_button("💾 儲存修改")
+            order_time = st.date_input("下單日期", value=default_order_date)
+            name = st.text_input("客戶姓名", value=str(rec.get("customer_name") or ""))
+            platform = st.selectbox("平台", platforms, index=platform_index)
+            tracking_number = st.text_input("包裹單號", value=str(rec.get("tracking_number") or ""))
+            amount_rmb = st.number_input("訂單金額（人民幣）", min_value=0.0, value=float(amount_value), step=1.0)
+            service_fee = st.number_input("代購手續費（NT$）", min_value=0.0, value=float(service_fee_value), step=1.0)
+            weight_kg = st.number_input("包裹公斤數", min_value=0.0, value=float(weight_value), step=0.05)
+            is_arrived = st.checkbox("已到貨", value=bool(rec.get("is_arrived") or False))
+            is_returned = st.checkbox("已運回", value=bool(rec.get("is_returned") or False))
+            is_early_returned = st.checkbox("提前運回", value=bool(rec.get("is_early_returned") or False))
+            remarks = st.text_area("備註", value=str(rec.get("remarks") or ""))
+            save = st.form_submit_button("💾 儲存修改", use_container_width=True)
 
-        # ===== 保存更新 =====
         if save:
-            cursor.execute(
-                """
-                UPDATE orders SET
-                  order_time        = %s,
-                  customer_name     = %s,
-                  platform          = %s,
-                  tracking_number   = %s,
-                  amount_rmb        = %s,
-                  weight_kg         = %s,
-                  is_arrived        = %s,
-                  is_returned       = %s,
-                  is_early_returned = %s,
-                  service_fee       = %s,
-                  remarks           = %s
-                WHERE order_id      = %s
-                """,
-                (
-                    order_time,
-                    name,
-                    platform,
-                    tracking_number,
-                    float(amount_rmb),
-                    float(weight_kg),
-                    bool(is_arrived),
-                    bool(is_returned),
-                    bool(is_early_returned),
-                    float(service_fee),
-                    remarks,
-                    edit_id
-                )
-            )
-            conn.commit()
-            st.session_state["toast_updated"] = True
-            st.rerun()
-            
-        # ===== 刪除按鈕 =====
-        confirm_del = st.checkbox("我確認要刪除這筆訂單")
-        if st.button("🗑 刪除此訂單", disabled=not confirm_del):
-            cursor.execute("DELETE FROM orders WHERE order_id = %s", (edit_id,))
-            conn.commit()
-            st.session_state["toast_deleted"] = True
-            st.rerun()
+            if not name.strip():
+                st.error("客戶姓名不可空白。")
+            else:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            UPDATE orders SET
+                                order_time = %s,
+                                customer_name = %s,
+                                platform = %s,
+                                tracking_number = %s,
+                                amount_rmb = %s,
+                                weight_kg = %s,
+                                is_arrived = %s,
+                                is_returned = %s,
+                                is_early_returned = %s,
+                                service_fee = %s,
+                                remarks = %s
+                            WHERE order_id = %s
+                            """,
+                            (
+                                order_time,
+                                name.strip(),
+                                platform,
+                                tracking_number.strip(),
+                                float(amount_rmb),
+                                float(weight_kg),
+                                int(bool(is_arrived)),
+                                int(bool(is_returned)),
+                                int(bool(is_early_returned)),
+                                float(service_fee),
+                                remarks,
+                                int(edit_id),
+                            ),
+                        )
+                    conn.commit()
+                    st.session_state["toast_updated"] = True
+                    st.rerun()
+                except Exception as e:
+                    conn.rollback()
+                    st.error(f"更新失敗：{e}")
+
+        st.divider()
+        confirm_del = st.checkbox("我確認要刪除這筆訂單", key=f"confirm_delete_{edit_id}")
+        if st.button("🗑 刪除此訂單", disabled=not confirm_del, use_container_width=True):
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM orders WHERE order_id = %s LIMIT 1", (int(edit_id),))
+                conn.commit()
+                st.session_state["toast_deleted"] = True
+                st.rerun()
+            except Exception as e:
+                conn.rollback()
+                st.error(f"刪除失敗：{e}")
 
 
 # 4. 搜尋訂單
