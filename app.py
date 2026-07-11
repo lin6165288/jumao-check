@@ -7,7 +7,6 @@ import io
 import re
 import math
 import json, os
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from feedback_store import init_db, read_feedbacks, update_status
 
 
