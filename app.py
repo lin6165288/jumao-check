@@ -10,7 +10,18 @@ import json, os
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from feedback_store import init_db, read_feedbacks, update_status
 
+
 st.set_page_config(page_title="橘貓代購系統", layout="wide")
+
+# ===== 安全 SQL 查詢 =====
+def read_sql_df(sql, conn, params=None):
+    params = params or []
+    conn.ping(reconnect=True, attempts=3, delay=1)
+    with conn.cursor(dictionary=True) as cur:
+        cur.execute(sql, tuple(params))
+        rows = cur.fetchall()
+    return pd.DataFrame(rows)
+
 
 if "db_inited" not in st.session_state:
     init_db()
@@ -25,7 +36,7 @@ def show_toast_once(key: str, msg: str, icon: str = "✅"):
 
 def get_current_exchange_rate(conn, default=4.78):
     try:
-        df_rate = pd.read_sql("""
+        df_rate = read_sql_df("""
             SELECT setting_value
             FROM site_settings
             WHERE setting_key = 'current_exchange_rate'
@@ -40,7 +51,7 @@ def get_current_exchange_rate(conn, default=4.78):
 
 def get_member_level(conn, customer_name: str) -> str:
     try:
-        df_member = pd.read_sql("""
+        df_member = read_sql_df("""
             SELECT member_level
             FROM members
             WHERE customer_name = %s
@@ -412,7 +423,7 @@ FROM customer_return_requests r
         r.created_at
     ORDER BY r.created_at DESC, r.request_id DESC
     """
-    return pd.read_sql(sql, conn)
+    return read_sql_df(sql, conn)
 
 
 def load_request_items(conn, request_id):
@@ -433,7 +444,7 @@ def load_request_items(conn, request_id):
     WHERE i.request_id = %s
     ORDER BY i.order_id ASC
     """
-    return pd.read_sql(sql, conn, params=[request_id])
+    return read_sql_df(sql, conn, params=[request_id])
 
 
 def mark_return_request_processed(conn, request_ids):
@@ -571,6 +582,7 @@ conn = mysql.connector.connect(
     database=st.secrets["mysql"]["database"],
     charset="utf8mb4",
     connection_timeout=10,
+    use_pure=True,
 )
 
 cursor = conn.cursor()
@@ -598,7 +610,7 @@ st.success("✅ DB connected")
 #歷史名字搜尋
 
 def get_customer_names(conn):
-    df = pd.read_sql("""
+    df = read_sql_df("""
         SELECT DISTINCT customer_name
         FROM orders
         WHERE customer_name IS NOT NULL AND customer_name <> ''
@@ -619,7 +631,7 @@ def load_dashboard_stats(conn):
     }
 
     try:
-        df = pd.read_sql("""
+        df = read_sql_df("""
             SELECT
                 COUNT(*) AS total_members,
                 SUM(
@@ -640,7 +652,7 @@ def load_dashboard_stats(conn):
         pass
 
     try:
-        df = pd.read_sql("""
+        df = read_sql_df("""
             SELECT COUNT(*) AS month_orders
             FROM orders
             WHERE YEAR(order_time) = YEAR(CURDATE())
@@ -654,7 +666,7 @@ def load_dashboard_stats(conn):
         pass
 
     try:
-        df = pd.read_sql("""
+        df = read_sql_df("""
             SELECT
                 COUNT(*) AS ready_count,
                 COALESCE(SUM(weight_kg), 0) AS ready_weight
@@ -698,7 +710,7 @@ st.title("🐾 橘貓代購｜訂單管理系統")
 render_dashboard_cards(conn)
 
 # ===== 側邊功能選單 =====
-menu = st.sidebar.selectbox("功能選單", [
+menu = st.sidebar.selectbox("功能選單", ["🏠 首頁", 
     "📋 訂單總表", "🧾 新增訂單", "✏️ 編輯訂單",
     "🔍 搜尋訂單", "📦 可出貨名單", "📥 貼上入庫訊息",
     "🚚 批次出貨", "💰 利潤報表/匯出", "💴 快速報價",
@@ -708,10 +720,21 @@ menu = st.sidebar.selectbox("功能選單", [
 
 # ===== 功能實作 =====
 
+# 首頁
+if menu == "🏠 首頁":
+    st.subheader("🏠 後台首頁")
+    st.info("請從左側功能選單選擇功能。")
+
 # 1. 訂單總表
-if menu == "📋 訂單總表":
+elif menu == "📋 訂單總表":
     st.subheader("📋 訂單總表")
-    df = pd.read_sql("SELECT * FROM orders", conn)
+    df = read_sql_df("""
+        SELECT order_id,order_time,customer_name,platform,tracking_number,
+        amount_rmb,service_fee,weight_kg,is_arrived,is_returned,is_early_returned,remarks
+        FROM orders
+        ORDER BY order_id DESC
+        LIMIT 1000
+    """, conn)
     col1, col2, col3 = st.columns(3)
     with col1:
         arrived_filter = st.selectbox("是否到貨", ["全部", "是", "否"])
@@ -972,7 +995,7 @@ elif menu == "✏️ 編輯訂單":
 
 
     # 執行查詢
-    df_raw = pd.read_sql(query, conn, params=params)
+    df_raw = read_sql_df(query, conn, params=params)
 
     if df_raw.empty:
         st.warning("⚠️ 查無任何訂單")
@@ -1081,7 +1104,7 @@ elif menu == "🔍 搜尋訂單":
         params.append(kw_date)
 
     # 讀出結果
-    df = pd.read_sql(query, conn, params=params)
+    df = read_sql_df(query, conn, params=params)
     st.dataframe(format_order_df(df))
 
 
@@ -1096,7 +1119,7 @@ elif menu == "📦 可出貨名單":
     # TAB 1：保留原本可出貨名單
     # =========================
     with tab1:
-        df_all = pd.read_sql("SELECT * FROM orders", conn)
+        df_all = read_sql_df("SELECT * FROM orders", conn)
         if df_all.empty:
             st.info("目前沒有任何訂單資料。")
         else:
@@ -1579,7 +1602,7 @@ elif menu == "📥 貼上入庫訊息":
 
                 # (A) 先確認此單號是否存在；不存在 → 丟進佇列（並抓客戶姓名）
                 try:
-                    df_match = pd.read_sql(
+                    df_match = read_sql_df(
                         """
                         SELECT customer_name
                         FROM orders
@@ -1741,7 +1764,7 @@ elif menu == "🚚 批次出貨":
     name = st.text_input("🔍 請輸入客戶姓名")
     if name.strip():
         # 1) 查詢訂單
-        df = pd.read_sql(
+        df = read_sql_df(
             "SELECT * FROM orders WHERE customer_name LIKE %s",
             conn,
             params=[f"%{name}%"]
@@ -1843,7 +1866,7 @@ elif menu == "💰 利潤報表/匯出":
     sell_rate = st.number_input("定價匯率", 0.0)
 
     # 讀出所有訂單
-    df = pd.read_sql("SELECT * FROM orders", conn)
+    df = read_sql_df("SELECT * FROM orders", conn)
 
     if df.empty:
         st.info("目前沒有任何訂單資料。")
@@ -2038,7 +2061,7 @@ elif menu == "👤 會員管理":
     query += " ORDER BY m.updated_at DESC, m.member_id DESC"
 
     try:
-        df_members = pd.read_sql(query, conn, params=params)
+        df_members = read_sql_df(query, conn, params=params)
     except Exception as e:
         st.error(f"讀取會員資料失敗：{e}")
         st.stop()
@@ -2047,7 +2070,7 @@ elif menu == "👤 會員管理":
         st.info("目前沒有會員資料。")
     else:
         try:
-            df_order_count = pd.read_sql("""
+            df_order_count = read_sql_df("""
                 SELECT customer_name, COUNT(*) AS order_count
                 FROM orders
                 GROUP BY customer_name
@@ -2106,7 +2129,7 @@ elif menu == "👤 會員管理":
         st.markdown("### 📦 此會員訂單紀錄")
 
         try:
-            df_orders = pd.read_sql("""
+            df_orders = read_sql_df("""
                 SELECT *
                 FROM orders
                 WHERE customer_name = %s
@@ -2127,7 +2150,7 @@ elif menu == "📢 前台公告管理":
         # ===== 前台訂單資料更新時間 =====
     st.markdown("### 🕒 訂單資料更新時間")
 
-    df_update_time = pd.read_sql("""
+    df_update_time = read_sql_df("""
         SELECT setting_value
         FROM site_settings
         WHERE setting_key = 'orders_last_update_time'
@@ -2161,7 +2184,7 @@ elif menu == "📢 前台公告管理":
     st.divider()
 
     # ===== 讀取目前匯率 =====
-    df_rate = pd.read_sql(
+    df_rate = read_sql_df(
         "SELECT setting_value FROM site_settings WHERE setting_key = 'current_exchange_rate'",
         conn
     )
@@ -2224,7 +2247,7 @@ elif menu == "📢 前台公告管理":
                 st.error(f"新增失敗：{e}")
 
     # ===== 顯示目前船班 =====
-    df_batches = pd.read_sql("""
+    df_batches = read_sql_df("""
         SELECT batch_id, batch_text, delivery_type, sort_order, is_active, updated_at
         FROM shipping_batches
         ORDER BY delivery_type ASC, is_active DESC, sort_order ASC, batch_id DESC
@@ -2309,7 +2332,7 @@ elif menu == "📢 前台公告管理":
 elif menu == "📮 集運登記管理":
     st.subheader("📮 集運登記管理")
 
-    df_reg = pd.read_sql("""
+    df_reg = read_sql_df("""
         SELECT register_id, customer_name, tracking_number, item_name, quantity, unit_price_rmb, remarks, status, created_at
         FROM customer_forwarding_registers
         ORDER BY created_at DESC, register_id DESC
@@ -2362,7 +2385,7 @@ elif menu == "📮 集運登記管理":
 
                     amount_rmb = 0
 
-                    df_exist = pd.read_sql(
+                    df_exist = read_sql_df(
                         "SELECT order_id FROM orders WHERE tracking_number = %s LIMIT 1",
                         conn,
                         params=[tracking_number]
