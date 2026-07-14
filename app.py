@@ -1936,9 +1936,33 @@ elif menu == "💰 利潤報表/匯出":
             st.warning("目前沒有可用的下單日期資料（order_time 皆為空或格式錯誤）。")
         else:
             # 計算三個利潤欄位（即時計算，不存 DB）
-            df_valid["匯率價差利潤"]   = df_valid["amount_rmb"] * (sell_rate - rmb_rate)
-            df_valid["代購手續費收入"] = df_valid["service_fee"]
-            df_valid["總利潤"]        = df_valid["匯率價差利潤"] + df_valid["代購手續費收入"]
+            # MySQL DECIMAL 讀進 pandas 後可能是 Decimal，
+            # 先統一轉成 float，避免 Decimal 與 float 混算造成 TypeError。
+            for col in ["amount_rmb", "service_fee"]:
+                if col not in df_valid.columns:
+                    df_valid[col] = 0.0
+
+                df_valid[col] = pd.to_numeric(
+                    df_valid[col],
+                    errors="coerce"
+                ).fillna(0.0).astype(float)
+
+            rmb_rate_float = float(rmb_rate or 0.0)
+            sell_rate_float = float(sell_rate or 0.0)
+
+            df_valid["匯率價差利潤"] = (
+                df_valid["amount_rmb"]
+                * (sell_rate_float - rmb_rate_float)
+            ).round(2)
+
+            df_valid["代購手續費收入"] = (
+                df_valid["service_fee"]
+            ).round(2)
+
+            df_valid["總利潤"] = (
+                df_valid["匯率價差利潤"]
+                + df_valid["代購手續費收入"]
+            ).round(2)
 
             # ----- 日期區間選擇器（預設：本月 1 號～今天）-----
             min_d = df_valid["order_time"].dt.date.min()
@@ -2545,117 +2569,3 @@ elif menu == "📮 匿名回饋管理":
                 except Exception as e:
                     st.error(f"更新失敗：{e}")
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
