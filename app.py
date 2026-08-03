@@ -1917,8 +1917,33 @@ elif menu == "💰 利潤報表/匯出":
     st.subheader("💰 利潤報表與匯出")
 
     # 匯率輸入
-    rmb_rate  = st.number_input("人民幣匯率", 0.0)
-    sell_rate = st.number_input("定價匯率", 0.0)
+    rate_col1, rate_col2, rate_col3 = st.columns(3)
+    with rate_col1:
+        rmb_rate = st.number_input(
+            "人民幣匯率",
+            min_value=0.0,
+            value=0.0,
+            step=0.01,
+            format="%.2f"
+        )
+    with rate_col2:
+        payment_sell_rate = st.number_input(
+            "代付定價匯率",
+            min_value=0.0,
+            value=0.0,
+            step=0.01,
+            format="%.2f"
+        )
+    with rate_col3:
+        purchase_sell_rate = st.number_input(
+            "代購定價匯率",
+            min_value=0.0,
+            value=0.0,
+            step=0.01,
+            format="%.2f"
+        )
+
+    st.caption("客戶姓名完全等於「代付」的訂單使用代付定價匯率；其餘訂單使用代購定價匯率。")
 
     # 讀出所有訂單
     df = read_sql_df("SELECT * FROM orders", conn)
@@ -1935,7 +1960,6 @@ elif menu == "💰 利潤報表/匯出":
         if df_valid.empty:
             st.warning("目前沒有可用的下單日期資料（order_time 皆為空或格式錯誤）。")
         else:
-            # 計算三個利潤欄位（即時計算，不存 DB）
             # MySQL DECIMAL 讀進 pandas 後可能是 Decimal，
             # 先統一轉成 float，避免 Decimal 與 float 混算造成 TypeError。
             for col in ["amount_rmb", "service_fee"]:
@@ -1947,12 +1971,33 @@ elif menu == "💰 利潤報表/匯出":
                     errors="coerce"
                 ).fillna(0.0).astype(float)
 
-            rmb_rate_float = float(rmb_rate or 0.0)
-            sell_rate_float = float(sell_rate or 0.0)
+            if "customer_name" not in df_valid.columns:
+                df_valid["customer_name"] = ""
 
+            rmb_rate_float = float(rmb_rate or 0.0)
+            payment_sell_rate_float = float(payment_sell_rate or 0.0)
+            purchase_sell_rate_float = float(purchase_sell_rate or 0.0)
+
+            # 客戶姓名完全等於「代付」時，判斷為代付訂單
+            is_payment_order = (
+                df_valid["customer_name"]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .eq("代付")
+            )
+
+            df_valid["訂單類型"] = "代購"
+            df_valid.loc[is_payment_order, "訂單類型"] = "代付"
+
+            # 每筆訂單依類型套用不同定價匯率
+            df_valid["適用定價匯率"] = purchase_sell_rate_float
+            df_valid.loc[is_payment_order, "適用定價匯率"] = payment_sell_rate_float
+
+            # 計算三個利潤欄位（即時計算，不存 DB）
             df_valid["匯率價差利潤"] = (
                 df_valid["amount_rmb"]
-                * (sell_rate_float - rmb_rate_float)
+                * (df_valid["適用定價匯率"] - rmb_rate_float)
             ).round(2)
 
             df_valid["代購手續費收入"] = (
@@ -1973,36 +2018,103 @@ elif menu == "💰 利潤報表/匯出":
 
             # 預設值要落在可選範圍內（夾住）
             default_start = max(this_month_start, min_d)
-            default_end   = min(today, max_d)
+            default_end = min(today, max_d)
 
             colA, colB = st.columns(2)
             with colA:
-                start_date = st.date_input("起始日期", value=default_start, min_value=min_d, max_value=max_d)
+                start_date = st.date_input(
+                    "起始日期",
+                    value=default_start,
+                    min_value=min_d,
+                    max_value=max_d
+                )
             with colB:
-                end_date   = st.date_input("結束日期", value=default_end, min_value=min_d, max_value=max_d)
+                end_date = st.date_input(
+                    "結束日期",
+                    value=default_end,
+                    min_value=min_d,
+                    max_value=max_d
+                )
 
             # 防呆：若選反，自動交換
             if start_date > end_date:
                 start_date, end_date = end_date, start_date
 
-
             # 篩選區間（含頭含尾）
             start_dt = pd.to_datetime(start_date)
-            end_dt   = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+            end_dt = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
 
-            df_sel = df_valid[(df_valid["order_time"] >= start_dt) & (df_valid["order_time"] <= end_dt)].copy()
+            df_sel = df_valid[
+                (df_valid["order_time"] >= start_dt)
+                & (df_valid["order_time"] <= end_dt)
+            ].copy()
 
             st.markdown(f"#### {start_date} ～ {end_date} 訂單統計（共 {len(df_sel)} 筆）")
 
-            # 顯示 KPI
+            # 顯示總計 KPI
             col1, col2, col3 = st.columns(3)
             col1.metric("匯率價差利潤 (NT$)", f"{df_sel['匯率價差利潤'].sum():,.2f}")
-            col2.metric("手續費收入 (NT$)",     f"{df_sel['代購手續費收入'].sum():,.2f}")
-            col3.metric("總利潤 (NT$)",       f"{df_sel['總利潤'].sum():,.2f}")
+            col2.metric("手續費收入 (NT$)", f"{df_sel['代購手續費收入'].sum():,.2f}")
+            col3.metric("總利潤 (NT$)", f"{df_sel['總利潤'].sum():,.2f}")
+
+            # 顯示代付 / 代購分開統計
+            payment_df = df_sel[df_sel["訂單類型"] == "代付"]
+            purchase_df = df_sel[df_sel["訂單類型"] == "代購"]
+
+            st.markdown("### 📊 分類統計")
+            type_col1, type_col2 = st.columns(2)
+
+            with type_col1:
+                st.metric(
+                    "代付訂單",
+                    f"{len(payment_df)} 筆",
+                    f"總利潤 NT$ {payment_df['總利潤'].sum():,.2f}"
+                )
+
+            with type_col2:
+                st.metric(
+                    "代購訂單",
+                    f"{len(purchase_df)} 筆",
+                    f"總利潤 NT$ {purchase_df['總利潤'].sum():,.2f}"
+                )
 
             # 匯出區間報表
             st.markdown("### 📤 下載報表")
             df_export = df_sel.copy()
+
+            # 匯出時保留本次計算使用的人民幣匯率
+            df_export["人民幣匯率"] = rmb_rate_float
+
+            # 調整匯出欄位順序，讓訂單類型與匯率資訊靠近金額欄位
+            preferred_columns = [
+                "order_id",
+                "order_time",
+                "customer_name",
+                "訂單類型",
+                "platform",
+                "tracking_number",
+                "amount_rmb",
+                "人民幣匯率",
+                "適用定價匯率",
+                "service_fee",
+                "匯率價差利潤",
+                "代購手續費收入",
+                "總利潤",
+                "weight_kg",
+                "is_arrived",
+                "is_returned",
+                "is_early_returned",
+                "remarks",
+            ]
+            remaining_columns = [
+                col for col in df_export.columns
+                if col not in preferred_columns
+            ]
+            df_export = df_export[
+                [col for col in preferred_columns if col in df_export.columns]
+                + remaining_columns
+            ]
+
             df_export = format_order_df(df_export)  # 中文＋✔✘
 
             towrite = io.BytesIO()
